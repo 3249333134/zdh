@@ -1,0 +1,30 @@
+**/node_modules/
+.local-dsh/
+.local-business/
+.smoke-desktop/
+.installer-tools/
+.env
+enterprise-data/
+local-enterprise-data/
+enterprise/lib/
+.enterprise-test/
+.recovery/
+test-data-*/
+dist/
+fill/
+test/
+*.log
+
+# 构建产物
+workbench/lib/
+*.tsbuildinfo
+
+# 上游完整源码与压缩包不入库，仅保留 source-lock.json
+/upstream/deepseek-harness-master/
+/upstream/*.zip
+
+# 本机一次性检查产物
+/.node-ui-design-scan.json
+/.task-progress-ui-detect.json
+/.progress-window-design-check.json
+/workbench/screenshot*.png

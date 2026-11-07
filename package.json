@@ -1,0 +1,39 @@
+{
+  "name": "enterprise-dsh-workbench",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test workbench/tests/*.test.mjs",
+    "build:plugin": "node workbench/build.mjs",
+    "setup:dev": "node scripts/setup-dev.mjs",
+    "start": "node workbench/build.mjs && node scripts/start-workbench.mjs",
+    "test:smoke": "node scripts/test-shell.mjs",
+    "prepare:installer": "node workbench/build.mjs && node scripts/prepare-installer.mjs",
+    "package:check": "node scripts/package-windows.mjs --check",
+    "package:win": "node scripts/package-windows.mjs",
+    "build:enterprise": "node scripts/build-enterprise.mjs",
+    "start:enterprise": "node enterprise/lib/main.js",
+    "test:enterprise": "node --import tsx --test enterprise/tests/*.test.ts",
+    "configure:enterprise": "node scripts/configure-enterprise.mjs",
+    "test:shell": "node scripts/test-shell.mjs"
+  },
+  "engines": {
+    "node": ">=24.9.0"
+  },
+  "dependencies": {
+    "@electric-sql/pglite": "0.5.14",
+    "fflate": "0.8.3",
+    "pdfjs-dist": "6.3.289",
+    "pg": "8.23.1"
+  },
+  "devDependencies": {
+    "@types/node": "26.6.6",
+    "@types/pg": "8.23.1",
+    "@types/react": "18.3.31",
+    "@types/react-dom": "18.3.7",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "tsx": "4.23.15",
+    "typescript": "7.0.2"
+  }
+}

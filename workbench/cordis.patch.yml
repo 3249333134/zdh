@@ -1,0 +1,11 @@
+- id: ui-settings-models
+  config:
+    credentialOnboarding: false
+- id: ui-settings-account
+  config:
+    version: 1
+    step: done
+    completion: skipped
+- insert:
+    - id: enterprise-workbench
+      name: '@enterprise/dsh-workbench'

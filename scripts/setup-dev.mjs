@@ -1,0 +1,11 @@
+import {mkdirSync,existsSync,symlinkSync,lstatSync,readlinkSync,unlinkSync} from 'node:fs';
+import {join} from 'node:path';
+import {fileURLToPath} from 'node:url';
+const root=fileURLToPath(new URL('../',import.meta.url));
+const upstream=join(root,'upstream/deepseek-harness-master');
+const link=(target,path)=>{if(existsSync(path))return;mkdirSync(join(path,'..'),{recursive:true});symlinkSync(target,path,'junction');};
+const localModules=join(root,'workbench/node_modules');
+if(existsSync(localModules)&&lstatSync(localModules).isSymbolicLink()&&readlinkSync(localModules)===join(upstream,'node_modules'))unlinkSync(localModules);
+link(join(upstream,'packages/enterprise/workbench/node_modules'),localModules);
+link(join(root,'workbench'),join(root,'.local-dsh/profiles/web/node_modules/@enterprise/dsh-workbench'));
+console.log('开发插件已连接；数据目录：.local-business。');

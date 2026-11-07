@@ -1,0 +1,5 @@
+export function parseFactoryCsv(text:string,headers:string[]){
+  const rows:string[][]=[];let row:string[]=[],field='',quoted=false;const source=text.replace(/^\uFEFF/,'');
+  for(let i=0;i<source.length;i++){const c=source[i];if(c==='"'){if(quoted&&source[i+1]==='"'){field+='"';i++;}else if(!quoted&&field)throw new Error('CSV引号位置无效');else quoted=!quoted;}else if(c===','&&!quoted){row.push(field);field='';}else if((c==='\n'||c==='\r')&&!quoted){if(c==='\r'&&source[i+1]==='\n')i++;row.push(field);if(row.some(v=>v.trim()))rows.push(row);row=[];field='';}else field+=c;}
+  if(quoted)throw new Error('CSV引号没有闭合');row.push(field);if(row.some(v=>v.trim()))rows.push(row);const actual=rows.shift()?.map(h=>h.trim());if(!actual||actual.length!==headers.length||actual.some((v,i)=>v!==headers[i]))throw new Error('CSV表头不匹配，请下载当前场景模板');if(rows.length>1000)throw new Error('一次最多导入1000条记录');return rows.map((r,i)=>{if(r.length!==headers.length)throw new Error('第'+(i+2)+'行列数不正确');return Object.fromEntries(headers.map((h,j)=>[h,r[j].trim()]));});
+}

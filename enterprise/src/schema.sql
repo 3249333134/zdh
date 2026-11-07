@@ -1,0 +1,11 @@
+CREATE TABLE IF NOT EXISTS migrations(version integer PRIMARY KEY);
+INSERT INTO migrations VALUES(1) ON CONFLICT DO NOTHING;
+CREATE TABLE IF NOT EXISTS users(id text PRIMARY KEY, name text NOT NULL, login text UNIQUE NOT NULL, password text NOT NULL, roles jsonb NOT NULL, department_id text NOT NULL DEFAULT '', enabled boolean NOT NULL DEFAULT true);
+CREATE TABLE IF NOT EXISTS sessions(token text PRIMARY KEY,user_id text NOT NULL REFERENCES users(id),expires_at timestamptz NOT NULL);
+CREATE TABLE IF NOT EXISTS records(kind text NOT NULL,id text NOT NULL,body jsonb NOT NULL,updated_at timestamptz NOT NULL DEFAULT now(),PRIMARY KEY(kind,id));
+CREATE TABLE IF NOT EXISTS flow_versions(id text PRIMARY KEY,definition_id text NOT NULL,number integer NOT NULL,body jsonb NOT NULL,UNIQUE(definition_id,number));
+CREATE TABLE IF NOT EXISTS instances(id text PRIMARY KEY,body jsonb NOT NULL,updated_at timestamptz NOT NULL DEFAULT now());
+CREATE TABLE IF NOT EXISTS audit(id text PRIMARY KEY,actor_id text NOT NULL,action text NOT NULL,entity_id text NOT NULL,at timestamptz NOT NULL DEFAULT now(),detail jsonb NOT NULL);
+CREATE TABLE IF NOT EXISTS commands(key text PRIMARY KEY,actor_id text NOT NULL,request_hash text NOT NULL,response jsonb NOT NULL);
+CREATE TABLE IF NOT EXISTS leases(name text PRIMARY KEY,owner text NOT NULL,until_at timestamptz NOT NULL);
+CREATE TABLE IF NOT EXISTS models(id text PRIMARY KEY,name text NOT NULL,base_url text NOT NULL,model text NOT NULL,secret text NOT NULL);

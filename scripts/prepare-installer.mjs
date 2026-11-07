@@ -1,0 +1,46 @@
+import { readFileSync, writeFileSync, mkdirSync, copyFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
+import './prepare-shell.mjs';
+const root=fileURLToPath(new URL('../',import.meta.url));
+const upstream=join(root,'upstream/deepseek-harness-master');
+function patch(path,from,to) {
+  const full=join(upstream,path),source=readFileSync(full,'utf8');
+  if(source.includes(to))return;
+  if(!source.includes(from))throw new Error('锁定的上游源码与补丁不符：'+path);
+  writeFileSync(full,source.replace(from,to));
+}
+const plugin=join(upstream,'packages/enterprise/workbench');
+mkdirSync(join(plugin,'lib'),{recursive:true});
+for(const file of ['index.mjs','store.mjs','documents.mjs','tools.mjs','cordis.patch.yml','lib/client.js'])copyFileSync(join(root,'workbench',file),join(plugin,file));
+const manifest=JSON.parse(readFileSync(join(root,'workbench/package.json'),'utf8'));
+manifest.dependencies={fflate:'0.8.3','pdfjs-dist':'6.3.289'};
+manifest.version=JSON.parse(readFileSync(join(upstream,'package.json'),'utf8')).version;
+manifest.files=['*.mjs','cordis.patch.yml','lib/client.js'];
+manifest.peerDependencies['@deepseek-ai/cordis']='workspace:~';
+manifest.peerDependencies['@deepseek-ai/dsh-tools']='workspace:*';
+manifest.peerDependencies['@deepseek-ai/dsh-typert-protocol']='workspace:*';
+writeFileSync(join(plugin,'package.json'),JSON.stringify(manifest,null,2)+'\n');
+// The external plugin is already JavaScript; only the canonical root build compiles its client.
+writeFileSync(join(plugin,'tsdown.config.ts'),"export default { entry: ['index.mjs','tools.mjs'], outDir: 'lib/host', platform: 'node', format: 'esm', clean: false, dts: false }\n");
+const cliPath=join(upstream,'apps/cli/package.json');
+const cli=JSON.parse(readFileSync(cliPath,'utf8'));cli.dependencies['@enterprise/dsh-workbench']='workspace:*';writeFileSync(cliPath,JSON.stringify(cli,null,2)+'\n');
+patch('apps/desktop/src/project-manager.ts','const WEB_PROFILE = PROFILE_TEMPLATES.web as ProfileTemplate',"const WEB_PROFILE = { ...PROFILE_TEMPLATES.web, bundles: [...PROFILE_TEMPLATES.web!.bundles, '@enterprise/dsh-workbench'] } as ProfileTemplate");
+patch('apps/desktop/scripts/smoke-packaged-runtime.ts',"join(application, 'DeepSeek Harness.exe')", "join(application, process.env.ENTERPRISE_MANUAL_INSTALLER === '1' ? '企业人机协作工作台.exe' : 'DeepSeek Harness.exe')");
+patch('apps/desktop/scripts/package-target.ts',"const environment = target.platform === 'darwin' && invocation.unsigned", "const environment = process.env.ENTERPRISE_MANUAL_INSTALLER === '1'\n    ? { ...process.env, DSH_DESKTOP_APP_ID: 'com.enterprise.dsh.workbench', DSH_DESKTOP_UNSIGNED: '1' }\n    : target.platform === 'darwin' && invocation.unsigned");
+patch('apps/desktop/scripts/package-target.ts','const packaged = readDesktopBuildCommit(REPOSITORY_ROOT)','const packaged = resolveDesktopBuildCommit(environment) ?? readDesktopBuildCommit(REPOSITORY_ROOT)');
+patch('apps/desktop/scripts/desktop-package-environment.mjs',"if (target.platform !== 'darwin' || !options.unsigned) resolveDesktopPolicyEnvironment(environment)","if (environment.ENTERPRISE_MANUAL_INSTALLER !== '1' && (target.platform !== 'darwin' || !options.unsigned)) resolveDesktopPolicyEnvironment(environment)");
+patch('apps/desktop/scripts/electron-builder-config.mjs',"const policy = packagesMacOS && unsigned ? undefined : resolveDesktopPolicyEnvironment(env)","const policy = env.ENTERPRISE_MANUAL_INSTALLER === '1' || (packagesMacOS && unsigned) ? undefined : resolveDesktopPolicyEnvironment(env)");
+patch('apps/desktop/scripts/electron-builder-config.mjs',"productName: 'DeepSeek Harness',", "productName: env.ENTERPRISE_MANUAL_INSTALLER === '1' ? '企业人机协作工作台' : 'DeepSeek Harness',");
+patch('apps/desktop/scripts/electron-builder-config.mjs',"protocols: [{ name: 'DeepSeek Harness', schemes: ['dsh'] }],", "protocols: env.ENTERPRISE_MANUAL_INSTALLER === '1' ? [] : [{ name: 'DeepSeek Harness', schemes: ['dsh'] }],");
+patch('apps/desktop/scripts/electron-builder-config.mjs',"dshDesktopAppId: appId,", "dshDesktopAppId: appId,\n      ...(env.ENTERPRISE_MANUAL_INSTALLER === '1' ? { main: 'lib/enterprise-main.cjs' } : {}),");
+patch('apps/desktop/scripts/electron-builder-config.mjs',"if (resolvedPlatform === 'win32') installWindowsDirectoryInstaller()", "if (resolvedPlatform === 'win32' && env.ENTERPRISE_MANUAL_INSTALLER !== '1') installWindowsDirectoryInstaller()");
+patch('apps/desktop/scripts/electron-builder-config.mjs',"if (resolvedPlatform !== 'win32') return true", "if (resolvedPlatform !== 'win32' || env.ENTERPRISE_MANUAL_INSTALLER === '1') return true");
+patch('apps/desktop/scripts/electron-builder-config.mjs',"'lib/main.js',", "'lib/main.js',\n      'lib/enterprise-main.cjs',");
+patch('apps/desktop/scripts/electron-builder-config.mjs',"nsis: {", "nsis: env.ENTERPRISE_MANUAL_INSTALLER === '1' ? { oneClick: false, perMachine: false, allowToChangeInstallationDirectory: true, createDesktopShortcut: true, deleteAppDataOnUninstall: false } : {");
+patch('apps/desktop/scripts/desktop-toolchain-preflight.ts',"const failures: DesktopToolchainProbeFailure[] = []\n  const programFiles", "// The enterprise distribution uses standard NSIS, without the upstream custom C++ installer UI.\n  if (environment.ENTERPRISE_MANUAL_INSTALLER === '1') return []\n  const failures: DesktopToolchainProbeFailure[] = []\n  const programFiles");
+patch('scripts/release/families.ts',"if (!name.startsWith('@deepseek-ai/'))", "if (!name.startsWith('@deepseek-ai/') && !(process.env.ENTERPRISE_MANUAL_INSTALLER === '1' && name === '@enterprise/dsh-workbench'))");
+patch('apps/desktop/scripts/prepare-runtime.ts',"import { chmodSync, cpSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'", "import { chmodSync, cpSync, mkdirSync, rmSync, writeFileSync, existsSync, readFileSync } from 'node:fs'\nimport { createHash } from 'node:crypto'");
+patch('apps/desktop/scripts/prepare-runtime.ts',"() => downloadArtifact({ version, platform, arch, artifactName: 'electron', cacheRoot: BUILD_PATHS.downloads })", "async () => {\n      const local = join(BUILD_PATHS.downloads, 'enterprise-electron.zip')\n      if (process.env.ENTERPRISE_MANUAL_INSTALLER === '1' && existsSync(local)) {\n        const expected = readFileSync(local.replace(/\\.zip$/, '.sha256'), 'utf8').trim()\n        if (!/^[a-f0-9]{64}$/.test(expected) || createHash('sha256').update(readFileSync(local)).digest('hex') !== expected) throw new Error('Enterprise Electron checksum mismatch')\n        return local\n      }\n      return downloadArtifact({ version, platform, arch, artifactName: 'electron', cacheRoot: BUILD_PATHS.downloads })\n    }");
+writeFileSync(join(upstream,'apps/desktop/lib/enterprise-main.cjs'),`const {app}=require('electron');const path=require('node:path');const fs=require('node:fs');app.setName('企业人机协作工作台');if(process.env.ENTERPRISE_WORKBENCH_HOME){fs.mkdirSync(process.env.ENTERPRISE_WORKBENCH_HOME,{recursive:true});app.setPath('userData',process.env.ENTERPRISE_WORKBENCH_HOME);}process.env.DSH_HOME=path.join(app.getPath('userData'),'dsh');process.env.ENTERPRISE_DATA_HOME=app.getPath('userData');import('./main.js');\n`);
+console.log('企业安装包补丁及内置业务插件已准备。');

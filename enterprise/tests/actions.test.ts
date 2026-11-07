@@ -1,0 +1,27 @@
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+import {PGlite} from '@electric-sql/pglite';
+import {Store} from '../src/db.ts';
+import {EnterpriseService} from '../src/service.ts';
+import {installSample} from '../src/sample.ts';
+import {proposeAction,decideAction,businessQuery,startCopilot} from '../src/actions.ts';
+import {actionBridge} from '../src/action-bridge.ts';
+async function fixture(){const db=new PGlite(),store=new Store({query:(sql,params)=>db.query(sql,params)});await store.initialize();const service=new EnterpriseService(store,'a'.repeat(64));await service.bootstrap({name:'管理',login:'admin',password:'test-password-123'});const admin=(await service.login('admin','test-password-123')).actor;await installSample(service,admin);const person=await service.saveUser(admin,{name:'执行',login:'executor',password:'test-password-123',roles:['executor'],departmentId:'delivery'});const executor=(await service.login('executor','test-password-123')).actor;return {db,store,service,admin,executor};}
+test('human and AI action preview share business validation; atomic confirm and stale detection',async()=>{const f=await fixture();try{const {service,store,admin,executor}=f;
+  const request={action:'project.create',args:{title:'意图式业务',goal:'由人确认后建档'},key:'one'};const p=await proposeAction(service,admin,request);assert.equal((await store.list('projects')).length,0);assert.equal((await proposeAction(service,admin,request)).id,p.id);
+  await assert.rejects(()=>decideAction(service,executor,p.id,'confirm'),/本人确认/);await assert.rejects(()=>proposeAction(service,executor,{...request,key:'unauthorized'}),/权限/);await assert.rejects(()=>proposeAction(service,admin,{...request,key:'bad-field',args:{...request.args,roles:['admin']}}),/未授权字段/);
+  const done=await decideAction(service,admin,p.id,'confirm');await decideAction(service,admin,p.id,'confirm');assert.equal((await store.list('projects')).length,1);assert.equal(done.status,'confirmed');
+  const task=await proposeAction(service,admin,{action:'task.create',args:{projectId:done.after.id,title:'实际任务'},key:'task'});await decideAction(service,admin,task.id,'confirm');
+  const progress=await proposeAction(service,admin,{action:'task.progress',args:{taskId:task.after.id,progress:'第一次更新',status:'doing'},key:'progress'});
+  await service.saveRecord(admin,'tasks',{...(await store.get('tasks',task.after.id)),progress:'别人的最新修改'});await assert.rejects(()=>decideAction(service,admin,progress.id,'confirm'),/记录已变化/);
+  const no=await proposeAction(service,admin,{...request,key:'reject'});await decideAction(service,admin,no.id,'reject');await assert.rejects(()=>decideAction(service,admin,no.id,'confirm'),/已处理/);
+  const linked=await store.get('tasks',task.after.id);linked.sourceInstanceId='flow';await store.put('tasks',linked);await assert.rejects(()=>proposeAction(service,admin,{action:'task.progress',args:{taskId:linked.id,progress:'跳过流程'},key:'bypass'}),/绕过流程/);await assert.rejects(()=>service.saveRecord(admin,'tasks',{...linked,status:'done'}),/绕过流程/);
+}finally{await f.db.close();}});
+test('execution bridge inherits actor, enforces live permissions and never exposes confirmation',async()=>{const f=await fixture();let bridge:any;try{const {service,store,admin,executor}=f;
+  await service.saveRecord(admin,'projects',{id:'secret',title:'其他部门秘密',departmentId:'private'});assert.equal((await businessQuery(service,executor,{kind:'projects'})).records.length,0);
+  const i=await startCopilot(service,admin,{employeeId:'planner',prompt:'为测试建立任务'},'copilot-once');assert.equal((await startCopilot(service,admin,{employeeId:'planner',prompt:'为测试建立任务'},'copilot-once')).id,i.id);const run=i.runs.find(r=>r.nodeId==='copilot')!;run.status='running';run.attempt=1;await store.db.query('UPDATE instances SET body=$2 WHERE id=$1',[i.id,JSON.stringify(i)]);
+  bridge=await actionBridge(service,i,run,i.version.employees[0],new AbortController().signal);const call=async(path:string,body:any={},token=bridge.token)=>{const res=await fetch(bridge.url+path,{method:'POST',headers:{authorization:'Bearer '+token},body:JSON.stringify(body)});return {status:res.status,value:await res.json().catch(()=>({}))};};
+  assert.equal((await call('/catalog',{},'wrong')).status,403);assert.equal((await call('/catalog',{actorId:executor.id})).value.actor.id,admin.id);assert.equal((await call('/confirm',{id:'any'})).status,400);
+  const p=await call('/propose',{action:'project.create',args:{title:'AI建议',goal:'尚未确认'},key:'bridge'});assert.equal(p.value.status,'pending');assert.equal((await store.list('projects')).length,1);
+  const employee=await store.get('employees','planner');employee.enabled=false;await service.saveRecord(admin,'employees',employee);assert.equal((await call('/query',{kind:'projects'})).status,400);
+}finally{await bridge?.close();await f.db.close();}});

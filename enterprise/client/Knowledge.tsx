@@ -1,0 +1,5 @@
+import React,{useState} from 'react';
+import {WikiWorkbench} from './WikiWorkbench.tsx';
+import {KnowledgeInputs} from './KnowledgeInputs.tsx';
+import {encoded} from './common.tsx';
+export function Knowledge({data,api,act,actor,active=true}:any){const [archive,setArchive]=useState(false),[seed,setSeed]=useState<any>();return <section className="knowledge-workspace"><div hidden={archive}><WikiWorkbench api={api} data={data} seed={seed} onArchive={()=>setArchive(true)} active={active&&!archive}/></div>{archive&&<section><button onClick={()=>setArchive(false)}>返回知识库</button><h3>资料来源档案</h3><p>文件数量与正式知识页分别统计。文件只作为依据，人工发布后的 Wiki 才进入知识星海。</p><label>上传原始资料<input type="file" accept=".txt,.md,.docx,.pdf" onChange={e=>{const f=e.target.files?.[0];if(f)act(async()=>{if(f.size>10485760)throw new Error('文件不能超过10 MB');await api('/api/materials','POST',undefined,undefined,false,{name:f.name,base64:await encoded(f),departmentId:actor.departmentId,visibility:'department'});});}}/></label><KnowledgeInputs api={api} act={act} actor={actor} onCompile={(s:any)=>{setSeed(s);setArchive(false);}}/></section>}</section>;}

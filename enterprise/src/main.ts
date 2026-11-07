@@ -1,0 +1,14 @@
+import {startFactoryPatrol} from './factory.ts';
+import {mkdir} from 'node:fs/promises';
+import {resolve} from 'node:path';
+import {postgres} from './db.ts';
+import {EnterpriseService} from './service.ts';
+import {createApi} from './http.ts';
+import {DshExecutor,Scheduler} from './worker.ts';
+const data=resolve(process.env.ENTERPRISE_DATA_ROOT||'enterprise-data');await mkdir(data,{recursive:true});
+const store=postgres(process.env.DATABASE_URL||'postgresql://enterprise:enterprise@localhost:5432/enterprise');await store.initialize();
+const service=new EnterpriseService(store,process.env.ENTERPRISE_ENCRYPTION_KEY||'');
+const scheduler=new Scheduler(store,new DshExecutor(store,service.encryptionKey,data,resolve(process.env.DSH_SOURCE_ROOT||'upstream/deepseek-harness-master')));scheduler.start();
+const stopFactoryPatrol=startFactoryPatrol(service);
+const api=createApi(service,data,process.env.BOOTSTRAP_TOKEN||'',{folderRoot:process.env.ENTERPRISE_KNOWLEDGE_ROOT});api.listen(Number(process.env.PORT||8080),process.env.HOST||'0.0.0.0',()=>console.log('企业服务已启动'));api.requestTimeout=30000;
+for(const signal of ['SIGINT','SIGTERM'] as const)process.on(signal,async()=>{api.close();await api.knowledgeCollector.close();await stopFactoryPatrol();await scheduler.stop();await store.db.end?.();process.exit(0);});

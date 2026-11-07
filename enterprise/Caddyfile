@@ -1,0 +1,8 @@
+{$ENTERPRISE_DOMAIN:workbench.internal} {
+  tls internal
+  reverse_proxy enterprise:8080
+  header {
+    X-Content-Type-Options nosniff
+    Cache-Control no-store
+  }
+}
