@@ -23,6 +23,14 @@ workbench/lib/
 /upstream/deepseek-harness-master/
 /upstream/*.zip
 
+# dsh 桌面工作区：第三方克隆仓库（各自有独立 .git）与大体积本地产物不入库
+/dsh/.local-runtimes/
+/dsh/autoclip/
+/dsh/open-ai-canvas/
+/dsh/media_desk/
+# 清理脚本的本机扫描产物
+/cleanup-reports/
+
 # 本机一次性检查产物
 /.node-ui-design-scan.json
 /.task-progress-ui-detect.json

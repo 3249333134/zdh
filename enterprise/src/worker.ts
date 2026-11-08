@@ -81,7 +81,7 @@ export class DshExecutor implements Executor {
     const patch=join(home,'boundary.patch.yml');
     await writeFile(patch,JSON.stringify([{id:'llm-pi-ai',config:{providers:{'enterprise-gateway':{api:'openai-completions',apiKeyEnv:'ENTERPRISE_MODEL_KEY',baseURL:model.base_url,models:[{id:model.model,name:model.model,contextWindow:128000,maxTokens:8192,reasoningEfforts:false}],retryPolicy:{mode:'normal',maxRetries:0}}}}},{insert:[bridge?{id:'enterprise-business-gateway',name:resolve('enterprise/ai-business-tools.mjs'),config:{url:bridge.url,token:bridge.token}}:{id:'enterprise-execution-boundary',name:resolve('enterprise/ai-boundary.mjs')}]}]),{mode:0o600});
     const {DeepSeekHarness}=await import(pathToFileURL(join(this.upstreamRoot,'packages/sdk/client/lib/index.js')).href);
-    harness=new DeepSeekHarness({dshBin:join(this.upstreamRoot,'apps/cli/lib/bin.js'),dshHome:home,patches:[patch],provider:'enterprise-gateway',model:model.model,requestTimeoutMs:180000,env:{PATH:process.env.PATH,HOME:home,USERPROFILE:home,NODE_USE_SYSTEM_CA:'1',ENTERPRISE_MODEL_KEY:unseal(model.secret,this.key),DSH_TELEMETRY_DISABLED:'1'}});
+    harness=new DeepSeekHarness({dshBin:join(this.upstreamRoot,'apps/cli/lib/bin.js'),dshHome:home,patches:[patch],provider:'enterprise-gateway',model:model.model,initializeTimeoutMs:60000,requestTimeoutMs:180000,env:{PATH:process.env.PATH,HOME:home,USERPROFILE:home,NODE_USE_SYSTEM_CA:'1',ENTERPRISE_MODEL_KEY:unseal(model.secret,this.key),DSH_TELEMETRY_DISABLED:'1'}});
     signal.addEventListener('abort',abort,{once:true});
       signal.throwIfAborted();
       const user=(await this.store.db.query('SELECT id,name,roles,department_id FROM users WHERE id=$1 AND enabled=true',[i.assistance?.actorId||i.creatorId])).rows[0];if(!user)throw new Error('发起账号已停用，执行已暂停');
@@ -108,7 +108,7 @@ export class DshExecutor implements Executor {
         }catch(e){if(!i.intakePlanning||correction===2)throw e;const reason=e instanceof Error?e.message:'计划格式无效';result=await harness.run('上次计划未通过服务校验：'+reason.slice(0,300)+'。请只修正输出格式和任务分配，保持原需求与来源。旧流程必须严格按 planSlots 顺序返回相同数量的工作包，把细分行动写进工作包说明；任务组流程按声明节点分配，不能添加阶段。只返回完整的合规 JSON，不调用工具、不提交业务。请完整核对 executionRules：fixedWorkPackages 下必须沿用 taskSkeleton 的编号和阶段，且每个任务的 dependencies 只能来自其 allowedDependencyTaskIds；允许列表为空时必须是 []，并行工作包绝不能相互依赖。\n'+intakePrompt+'\n'+JSON.stringify(context),{sessionId:result.sessionId});}
       }
       return {output:{...output,...n.workAction==='weekly'?{sourceStamp:(context as any).sourceStamp}:{},sources:bridge?Array.from(bridge.sources.values()):materials.map((m:any)=>({id:m.id,name:m.name,version:m.version,sha256:m.sha256}))},sessionId:result.sessionId,modelId:model.id,modelName:model.model};
-    }catch(e){const message=e instanceof Error?e.message:'DSH 执行失败';throw new Error(message.replaceAll(unseal(model.secret,this.key),'[密钥已隐藏]'));}
+    }catch(e){const message=e instanceof Error?e.message:'DSH 执行失败';const safe=message.replaceAll(unseal(model.secret,this.key),'[密钥已隐藏]');throw new Error(/initialize timed out after \d+ms waiting for dsh profile/.test(safe)?'DSH 执行环境启动超时，尚未建立 AI 会话。需求已保留；请稍后重新生成计划。若持续失败，请检查服务端 DSH 启动环境。':safe);}
     finally{signal.removeEventListener('abort',abort);try{await harness?.close();}finally{await bridge?.close();}}
   }
 }

@@ -1,0 +1,14 @@
+{
+  "name": "gzt-dsh-cockpit",
+  "private": true,
+  "type": "module",
+  "version": "0.1.0",
+  "description": "独立前后端企业工作台骨架；保留 DSH AI 边界与人工确认原则。",
+  "scripts": {
+    "start": "node server/index.mjs",
+    "dev": "node --watch server/index.mjs"
+  },
+  "engines": {
+    "node": ">=24.0.0"
+  }
+}

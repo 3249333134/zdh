@@ -1,0 +1,6 @@
+runtime/
+data/
+logs/
+.smoke-agent-data/
+.smoke-workflow-data/
+.test-autoclip/

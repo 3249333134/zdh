@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>多子工作台可视化原型（静态示例）</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%2307529e'/%3E%3Crect x='3' y='4' width='3' height='8' fill='white' opacity='.92'/%3E%3Crect x='8' y='7' width='3' height='5' fill='white' opacity='.6'/%3E%3C/svg%3E">
+<style>
+:root{
+  --bg:#f3f6f9;--panel:#ffffff;--ink:#1f2d3d;--muted:#5a7186;--line:#d8e1ea;
+  --blue:#07529e;--blue-bg:#e8f1fc;--green:#0a7a52;--green-bg:#eff9f4;
+  --gold:#8a5a00;--gold-bg:#fdf6e8;--purple:#7a4fa3;--purple-bg:#f5effb;
+  --red:#b04a3a;--red-bg:#fdf0ee;--gray:#6b7a8d;--gray-bg:#eef2f6;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:"Microsoft YaHei","Segoe UI",system-ui,sans-serif;font-size:13.5px;line-height:1.55}
+.top{background:#fff;border-bottom:1px solid var(--line);padding:12px 18px 10px}
+.brand{font-size:16px;font-weight:700}.brand .sub{font-size:12px;color:var(--muted);font-weight:400;margin-left:10px}
+.nav{display:flex;flex-wrap:wrap;gap:10px;margin-top:10px;align-items:center}
+.nav-group{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.nav-label{font-size:12px;color:var(--muted);margin-right:2px}
+.nav button{border:1px solid var(--line);background:#fff;color:var(--ink);border-radius:16px;padding:4px 12px;cursor:pointer;font-size:12.5px}
+.nav button.active{background:var(--blue);border-color:var(--blue);color:#fff}
+main{max-width:1280px;margin:14px auto;padding:0 16px 40px}
+.notice{background:var(--gold-bg);border:1px solid #e6cf9c;color:var(--gold);border-radius:8px;padding:8px 12px;font-size:12.5px;margin-bottom:12px}
+.meta{display:flex;flex-wrap:wrap;gap:10px;align-items:center;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin-bottom:12px}
+.badge{display:inline-block;border-radius:12px;padding:2px 10px;font-size:12px;font-weight:600}
+.meta .flowid{font-family:Consolas,monospace;font-size:12px;color:var(--muted)}
+.meta .desc{flex-basis:100%;color:var(--muted);font-size:12.5px}
+.chain{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin-bottom:12px}
+.chain-title,.sec-title{font-size:13px;font-weight:700;margin-bottom:8px}
+.chain-flow{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
+.node{border-radius:8px;padding:5px 10px;font-size:12.5px;border:1px solid transparent;white-space:nowrap}
+.node .k{font-size:11px;opacity:.85;display:block}
+.arrow{color:var(--muted)}
+.k-start,.k-end{background:var(--gray-bg);color:var(--gray)}
+.k-ai{background:var(--blue-bg);color:var(--blue)}
+.k-human{background:var(--green-bg);color:var(--green)}
+.k-approval{background:var(--gold-bg);color:var(--gold)}
+.k-parallel,.k-join{background:var(--purple-bg);color:var(--purple)}
+.k-condition{background:var(--red-bg);color:var(--red)}
+.pluginbar{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 14px;margin-bottom:12px;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.pb-label{font-size:12.5px;font-weight:700;margin-right:4px}
+.chip{border:1px solid var(--line);background:#fff;border-radius:16px;padding:4px 12px;font-size:12.5px;cursor:pointer;color:var(--ink)}
+.chip.on{background:var(--blue-bg);border-color:var(--blue);color:var(--blue);font-weight:600}
+.chip .t{font-size:11px;color:var(--muted);margin-left:4px}
+.grid{display:grid;grid-template-columns:1.3fr .9fr;gap:12px}
+.col{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 14px;min-height:280px}
+.card{border:1px solid var(--line);border-radius:9px;padding:10px 12px;margin-bottom:10px;background:#fff}
+.card.active{border-color:var(--blue);box-shadow:0 0 0 1px var(--blue-bg)}
+.card-head{display:flex;justify-content:space-between;gap:8px;align-items:center}
+.card-title{font-weight:600}
+.st{font-size:11.5px;border-radius:10px;padding:1px 9px;white-space:nowrap}
+.st-todo{background:var(--gray-bg);color:var(--gray)}
+.st-doing{background:var(--blue-bg);color:var(--blue)}
+.st-done{background:var(--green-bg);color:var(--green)}
+.st-overdue{background:var(--red-bg);color:var(--red)}
+.st-rework{background:var(--gold-bg);color:var(--gold)}
+.st-pending{background:var(--purple-bg);color:var(--purple)}
+.meta-line{color:var(--muted);font-size:12px;margin:4px 0}
+.accept{margin:6px 0 0;padding-left:18px;font-size:12.5px;color:var(--muted)}
+.btn{background:var(--blue);color:#fff;border:none;border-radius:8px;padding:6px 14px;font-size:12.5px;cursor:pointer;margin-top:8px}
+.btn.ghost{background:#fff;color:var(--blue);border:1px solid var(--blue)}
+.dash-card{display:flex;justify-content:space-between;gap:10px;align-items:center}
+.dash-metric{font-size:13px;font-weight:700;color:var(--blue)}
+.chat{border:1px solid var(--line);border-radius:9px;padding:10px;background:#fbfdff;height:260px;overflow:auto}
+.msg{margin-bottom:10px;max-width:92%}
+.msg.ai{color:var(--ink)}.msg.me{margin-left:auto;text-align:right}
+.bubble{display:inline-block;background:#fff;border:1px solid var(--line);border-radius:10px;padding:7px 10px;text-align:left;font-size:12.5px}
+.msg.me .bubble{background:var(--blue-bg);border-color:#bcd8f2}
+.chat-input{display:flex;gap:8px;margin-top:10px}
+.chat-input input{flex:1;border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:12.5px}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin-top:12px}
+.panel-head{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+.type{font-size:11.5px;border-radius:10px;padding:1px 9px;background:var(--gray-bg);color:var(--gray)}
+.pf{display:grid;grid-template-columns:160px 1fr;gap:6px 14px;font-size:12.5px;margin:8px 0}
+.pf dt{color:var(--muted)}
+.pf dd{margin:0}
+table{border-collapse:collapse;width:100%;font-size:12.5px}
+th,td{border:1px solid var(--line);padding:6px 9px;text-align:left}
+th{background:var(--gray-bg);font-weight:600}
+.tbl{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin-top:12px}
+.landing{font-size:12px;color:var(--muted)}
+#toast{position:fixed;right:16px;bottom:16px;background:#22303f;color:#fff;border-radius:8px;padding:9px 14px;font-size:12.5px;display:none}
+.foot{color:var(--muted);font-size:12px;margin-top:16px}
+@media(max-width:1000px){.grid{grid-template-columns:1fr}.pf{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="brand">多子工作台 · 可视化原型<span class="sub">纯静态示例 · 数据均为占位 · 未连接后端 · 流程与字段对应《各工作台工作流详解.md》</span></div>
+  <div id="nav" class="nav"></div>
+</header>
+<main>
+  <div class="notice">布局约定：顶部为「插件快捷条」；主区左侧为待办/看板卡片、右侧为问答框；下方为选中插件的静态面板与该工作台插件配置清单。管理台左侧为管理看板，其余工作台左侧为个人待办。</div>
+  <section class="meta" id="meta"></section>
+  <section class="chain"><div class="chain-title">工作流示意（节点类型与顺序）</div><div class="chain-flow" id="chain"></div></section>
+  <section class="pluginbar"><span class="pb-label">插件条：</span><div id="chips" style="display:flex;flex-wrap:wrap;gap:8px"></div></section>
+  <section class="grid">
+    <div class="col">
+      <div class="sec-title" id="leftTitle">我的待办</div>
+      <div id="todoList"></div>
+    </div>
+    <div class="col">
+      <div class="sec-title">右侧问答框（任务问答 / 知识问答 / 个人对话）</div>
+      <div class="chat" id="chat"></div>
+      <div class="chat-input"><input placeholder="输入问题或指令（静态原型，不实际发送）"><button class="btn" onclick="toast('静态原型：发送不进入后端')">发送</button></div>
+    </div>
+  </section>
+  <section class="panel" id="panel"></section>
+  <section class="tbl"><div class="sec-title">本工作台插件配置清单</div><div id="pluginTable"></div></section>
+  <div class="foot">说明：节点颜色 = 节点类型；状态颜色 = 任务状态；所有按钮不触发真实提交、保存或请求。</div>
+</main>
+<div id="toast"></div>
+<script>
+const TYPE_LABEL={flow:'流程任务',board:'台账看板',ai:'AI 助手',material:'素材库',kb:'知识库',dash:'管理看板',console:'控制台'};
+const KIND_LABEL={start:'开始',ai:'AI 自动',human:'人工任务',approval:'人工审批',parallel:'并行',join:'汇合',condition:'判定',end:'结束归档'};
+const ORDER=['w1','w2','w3','w4','w5','w6','w7','w8','c1'];
+const VIEWS={
+w1:{short:'管理',layer:'管理层',color:'#07529e',colorBg:'#e8f1fc',role:'manager · 管理主管 / 审批验收',flow:'flow-management-master',
+desc:'接收业务 → AI 拆计划 → 人工批准下发 → 按工作台督办 → 验收与归档；管理台不直接执行一线交付。',
+chain:[{n:'受理需求',k:'start'},{n:'AI 拆计划',k:'ai'},{n:'计划审批下发',k:'approval'},{n:'并行派工（各工作台）',k:'parallel'},{n:'AI 质检',k:'ai'},{n:'人工验收',k:'approval'},{n:'复盘归档',k:'end'}],
+dash:[{name:'受理派发',metric:'3 条待确认计划',desc:'录入需求、AI 拆计划、核对后一键批准下发（幂等建档）'},{name:'待审批',metric:'2 项待验收',desc:'计划审批、交付验收、退回指定阶段'},{name:'进度督办',metric:'8 个业务 · 1 项阻塞',desc:'按层—工作台—阶段—负责人聚合，阻塞与逾期置顶'},{name:'结果归档',metric:'6 份成果包',desc:'上游成果、附件、复盘与知识候选统一查看'}],
+plugins:[
+ {id:'mgmt-intake',name:'受理派发',type:'dash',desc:'需求录入与计划审批下发；AI 计划仅草稿，批准权在人。',fields:[['关键动作','录入需求 → AI 拆计划 → 批准下发（幂等建档）']],landing:'创建实例与任务并下发各工作台'},
+ {id:'mgmt-approve',name:'待审批',type:'dash',desc:'计划审批与交付验收；退回带原因并保留历史轮次。',fields:[],landing:'审批记录入审计；退回任务回到执行阶段'},
+ {id:'mgmt-progress',name:'进度督办',type:'dash',desc:'复用 business-progress，按工作台分组展示 done/total、阻塞、逾期。',rows:[['业务','所属工作台','阶段','进度','状态'],['双11直播筹备','电商·直播运营','方案审批','4/6','待跟进'],['短视频预热','执行·短视频','剪辑中','3/5','进行中']],landing:'只读汇总；不替代审批'},
+ {id:'mgmt-archive',name:'结果归档',type:'dash',desc:'成果正文、附件、复盘结论与知识候选入口。',landing:'验收通过内容归档；候选进入知识库流程'},
+ {id:'kb-public',name:'知识库',type:'kb',desc:'全员公开页检索与阅读；管理额外可见候选箱与发布台。',landing:'引用公开 SOP、模板、复盘方法论'}],
+chat:[{who:'ai',text:'已收到 3 条待确认计划，其中 1 条依赖未满足，建议先补齐短视频脚本再批准下发。'},{who:'me',text:'先批准无阻塞的两条，另一条退回补料。'},{who:'ai',text:'已生成退回意见草稿（静态示例），确认后随审批动作提交。'}]},
+w2:{short:'直播主播',layer:'电商层',color:'#0a7a52',colorBg:'#eff9f4',role:'executor · 主播 / 场控',flow:'flow-live-daily',
+desc:'日常直播执行：开播准备、现场记录、数据回填、话术沉淀、竞品观察；AI 只出草稿，人工确认后提交。',
+chain:[{n:'直播任务确认',k:'start'},{n:'口播草稿',k:'ai'},{n:'准备 + 现场执行',k:'parallel'},{n:'结束回填',k:'human'},{n:'主管抽检',k:'approval'},{n:'复盘归档',k:'end'}],
+todos:[
+ {title:'今日直播 · 开播准备核对',status:'doing',due:'今日 18:30',deliverable:'准备清单勾选确认',accept:['设备 / 网络 / 灯光检查','商品链接与库存核对','样品到位','脚本与提词顺序核对']},
+ {title:'本场直播 · 数据回填',status:'todo',due:'下播后 1 小时',deliverable:'la-data 场次数据条目',accept:['峰值 / 均在线 / GMV / 件数 / 退款填全','关键截图作为附件','口径与往期一致']},
+ {title:'口播稿定稿（口播文案提升）',status:'todo',due:'开播前',deliverable:'口播稿正文（AI 草稿人工确认）',accept:['卖点完整、顺序合理','无夸大违规表述','主管抽检通过']},
+ {title:'直播话术沉淀',status:'todo',due:'下播后',deliverable:'la-script 话术条目',accept:['场景归类（开场/转品/逼单/答疑/促单）','记录使用效果','可被其他场次复用']},
+ {title:'竞品直播间观察记录',status:'overdue',due:'今日 22:00',deliverable:'la-competitor 条目 + 截图',accept:['事实与推测分开','记录来源与时间','结论供运营引用']}],
+plugins:[
+ {id:'la-live',name:'今日直播单',type:'flow',desc:'发起当日直播实例，预填日期、场次、主题、主推品、负责人。',fields:[['流程','flow-live-daily'],['发起角色','主管 / 运营'],['必填字段','日期、场次、主题、主推品、预计时长']],rows:[['日期','场次','主题','主推品','负责人'],['2026-11-08','晚间场','秋冬新品福利','A 款 / B 款','主播甲']],landing:'启动直播流程，生成个人待办'},
+ {id:'la-data',name:'直播数据',type:'board',desc:'手工/CSV 录入场次指标；明细私有，汇总可做复盘候选。',fields:[['录入方式','手工录入 / CSV 导入'],['可见性','部门可见；公开层只放方法与结论']],rows:[['日期','场次','峰值在线','GMV(示例)','退款','时长'],['11-07','晚间场','1.2k','示例值','示例值','120 分钟']],landing:'闭环条目 → 复盘 / 知识候选'},
+ {id:'la-script',name:'话术库',type:'board',desc:'按场景沉淀话术；主管抽检通过后发布到全员公开 Wiki。',rows:[['场景','话术正文（示例）','来源场次','效果评分','审核状态'],['逼单','示例话术：库存不多，先拍先得','11-07 晚场','4 / 5','待审核']],landing:'审核通过 → 公开话术知识页'},
+ {id:'la-competitor',name:'竞品直播间',type:'board',desc:'记录竞品主题、价格策略、钩子话术与人气估计；标注待核实。',rows:[['竞品账号','主题','价格策略','钩子（示例）','结论'],['示例账号','新品首发','满赠示例','示例钩子','待核实']],landing:'结论交运营分析，不直接公开传闻'},
+ {id:'la-material',name:'素材收集',type:'material',desc:'链接、截图、片段统一收集，打标签并标注授权状态。',rows:[['素材名','类型','标签','授权状态'],['开场参考片段','视频片段','开场 / 节奏','待确认']],landing:'入素材库；可关联任务提交'}],
+chat:[{who:'ai',text:'本场主推 A 款，可先看已发布话术库中的“福利款逼单”模板起草 3 个版本。'},{who:'me',text:'按模板生成一版口播稿，突出库存与赠品。'},{who:'ai',text:'草稿已生成（静态示例）：请人工修改确认后再点“提交交付”，AI 不会代提交。'}]},
+w3:{short:'直播运营',layer:'电商层',color:'#0a7a52',colorBg:'#eff9f4',role:'manager 主管 + executor 专员',flow:'flow-live-ops',
+desc:'为直播供给货、内容与活动洞察：选品、产品分析、文案、策划、活动、用户/市场分析；成果交接主播与执行层。',
+chain:[{n:'需求受理',k:'start'},{n:'AI 计划',k:'ai'},{n:'主管审批',k:'approval'},{n:'并行任务组',k:'parallel'},{n:'主管复核',k:'approval'},{n:'交接包输出',k:'human'},{n:'结束',k:'end'}],
+todos:[
+ {title:'选品清单（主推/引流/福利款）',status:'todo',due:'明日 12:00',deliverable:'lo-selection 清单 + 优先级',accept:['价格带与库存口径清楚','毛利/优先级标注','与活动机制匹配']},
+ {title:'重点产品分析卡',status:'doing',due:'明日 18:00',deliverable:'lo-product 分析卡',accept:['卖点 / 痛点 / FAQ 完整','基于授权资料不编造参数','标注展示顺序']},
+ {title:'直播文案包（标题/卖点卡/短描述）',status:'todo',due:'开播前 1 天',deliverable:'lo-copy 多版文案',accept:['与活动规则一致','合规无夸大','主播可直接使用']},
+ {title:'活动方案（机制/门槛/时间/预算/风险）',status:'todo',due:'开播前 3 天',deliverable:'lo-activity 方案',accept:['规则自洽、风险有对策','预算与库存联动','主管审批']},
+ {title:'用户与市场观察',status:'todo',due:'本周',deliverable:'lo-audience + lo-market 条目',accept:['区分事实与假设','来源标注','沉淀可复用方法']}],
+plugins:[
+ {id:'lo-selection',name:'选品池',type:'board',desc:'商品台账：类目、供货价、建议价、库存、毛利、优先级、状态。',rows:[['商品','建议价','库存','毛利(示例)','优先级','状态'],['示例商品 A','示例','120','示例','主推','候选']],landing:'选定商品挂到直播单；成本明细不公开'},
+ {id:'lo-product',name:'产品分析',type:'board',desc:'卖点、痛点、规格、对标、人群、展示顺序与 FAQ 草稿。',landing:'交付主播台与文案任务'},
+ {id:'lo-copy',name:'文案草稿',type:'ai',desc:'标题、卖点卡、短描述多版草稿；人工采用后提交。',landing:'随任务提交；可转知识候选'},
+ {id:'lo-plan',name:'策划排期',type:'flow',desc:'主题、节奏表（引流/利润/福利款排期）、时段、道具、负责人。',landing:'审批后下发主播执行'},
+ {id:'lo-activity',name:'活动方案',type:'flow',desc:'机制、门槛、时间、预算、风险与规则完整性检查清单。',landing:'审批 + 联动仓储备货'},
+ {id:'lo-audience',name:'用户洞察',type:'board',desc:'画像、高频评论、常见疑问、答疑口径（手填/导入）。',landing:'方法公开；明细私有'},
+ {id:'lo-market',name:'市场观察',type:'board',desc:'品类趋势、价格带、活动节奏、对标案例链接与截图。',landing:'月度复盘素材'},
+ {id:'lo-material',name:'素材收集',type:'material',desc:'运营域素材统一标签、来源与授权标注。',landing:'素材库复用'}],
+chat:[{who:'ai',text:'本周已积累 12 条用户评论记录，可归纳为 3 类高频疑问，建议补入 FAQ。'},{who:'me',text:'先按高频问题生成答疑口径草稿。'},{who:'ai',text:'草稿已生成（静态示例），需主管确认后发布为 FAQ。'}]},
+w4:{short:'达人维护',layer:'电商层',color:'#0a7a52',colorBg:'#eff9f4',role:'manager 主管 + executor 专员',flow:'flow-talent-coop',
+desc:'达人台账开发、合作执行跟进、内容数据回收与活动策划；报价与合同明细私有。',
+chain:[{n:'合作需求受理',k:'start'},{n:'计划审批',k:'approval'},{n:'筛选接洽 + 合作策划',k:'parallel'},{n:'确认达人档期',k:'approval'},{n:'执行跟进',k:'human'},{n:'结算归档',k:'approval'},{n:'结束',k:'end'}],
+todos:[
+ {title:'新达人建档与接洽',status:'doing',due:'本周',deliverable:'ta-pool 档案 + 状态流转',accept:['平台/量级/品类/报价完整','状态可追溯','分级合理']},
+ {title:'合作内容数据回收',status:'todo',due:'发布后 2 日',deliverable:'ta-content 表现条目',accept:['数据口径一致','链接/截图佐证','可用于续约判断']},
+ {title:'达人活动合作方案',status:'todo',due:'活动前 7 天',deliverable:'ta-plan 组合方案 + Brief',accept:['排期与目标明确','覆盖度合理','主管审批']},
+ {title:'老达人维护回访',status:'todo',due:'到期前',deliverable:'跟进记录与满意度',accept:['未到期预警','回访要点完整','维护结论留痕']}],
+plugins:[
+ {id:'ta-pool',name:'达人池',type:'board',desc:'台账：平台、账号、粉丝量级、品类、报价、联系方式、接洽状态、等级。',rows:[['账号','量级','品类','状态','等级'],['示例达人 A','示例 10w+','美妆','已洽谈','S']],landing:'合格达人转合作流程；报价私有'},
+ {id:'ta-content',name:'内容数据',type:'board',desc:'作品/场次播放、互动、转化与链接截图。',landing:'续约/淘汰依据；明细不公开'},
+ {id:'ta-coop',name:'合作跟进',type:'flow',desc:'Brief、档期、寄样、发布、核销、结算状态闭环。',landing:'flow-talent-coop 任务执行'},
+ {id:'ta-plan',name:'活动策划',type:'flow',desc:'达人组合、排期、预算与物料清单。',landing:'审批后联动运营与执行层'},
+ {id:'ta-material',name:'素材收集',type:'material',desc:'案例、对标内容与模板收集。',landing:'素材库复用'}],
+chat:[{who:'ai',text:'筛选出 3 位粉丝量级匹配的候选达人，其中 1 位历史转化高于平均。'},{who:'me',text:'生成接洽话术草稿与初评表。'},{who:'ai',text:'草稿已生成（静态示例），需人工确认后发出。'}]},
+w5:{short:'短视频',layer:'执行层',color:'#8a5a00',colorBg:'#fdf6e8',role:'executor · 编导 / 拍摄 / 剪辑',flow:'flow-short-video',
+desc:'产品要点 → 策划 → 脚本分镜 → 拍摄 → 剪辑交付；阶段间强依赖，前序未完成不可提交后序。',
+chain:[{n:'需求受理',k:'start'},{n:'产品要点',k:'human'},{n:'策划',k:'human'},{n:'脚本分镜',k:'human'},{n:'拍摄',k:'human'},{n:'剪辑成片',k:'human'},{n:'主管初审',k:'approval'},{n:'交付归档',k:'end'}],
+todos:[
+ {title:'产品要点整理',status:'todo',due:'今日',deliverable:'sv-product 要点卡',accept:['卖点与禁用表述明确','目标人群清楚','与授权资料一致']},
+ {title:'选题策划（钩子/结构）',status:'doing',due:'今日 18:00',deliverable:'sv-plan 选题卡',accept:['主题聚焦','结构完整','参考对标已标注']},
+ {title:'分镜脚本与台词',status:'todo',due:'策划通过后',deliverable:'sv-script 分镜表',accept:['镜号/画面/台词/时长齐全','时长合规','AI 草稿人工确认']},
+ {title:'拍摄执行与素材上传',status:'todo',due:'脚本完成后',deliverable:'sv-shoot 素材包 + 备注',accept:['素材与分镜对应','原片附件上传']},
+ {title:'剪辑成片交付',status:'todo',due:'拍摄完成后',deliverable:'sv-edit 成片 + 封面 + 标题',accept:['口播完整、字幕正确','时长合规','附件可下载']}],
+plugins:[
+ {id:'sv-product',name:'产品要点',type:'board',desc:'要点、卖点、禁用表述、人群与素材引用。',landing:'作为脚本约束输入'},
+ {id:'sv-plan',name:'策划任务',type:'flow',desc:'选题、钩子、结构与卖点设计。',landing:'flow-short-video 前置阶段'},
+ {id:'sv-script',name:'脚本分镜',type:'ai',desc:'分镜、台词、字幕多版草稿。',landing:'人工确认后交付拍摄'},
+ {id:'sv-shoot',name:'拍摄任务',type:'flow',desc:'拍摄清单、人员场地与素材上传。',landing:'依赖脚本完成'},
+ {id:'sv-edit',name:'剪辑交付',type:'flow',desc:'成片、字幕、封面、标题文案验收。',landing:'验收通过后归档'},
+ {id:'sv-material',name:'素材库',type:'material',desc:'BGM、镜头、封面/脚本模板与授权标注。',landing:'库内复用'}],
+chat:[{who:'ai',text:'当前选题缺少前 3 秒钩子，可基于已发布爆款结构给出两个备选开头。'},{who:'me',text:'生成脚本草稿并标出待确认镜头。'},{who:'ai',text:'草稿已生成（静态示例）；拍摄任务需脚本审批通过后解锁。'}]},
+w6:{short:'美工',layer:'执行层',color:'#8a5a00',colorBg:'#fdf6e8',role:'executor · 设计师',flow:'flow-design',
+desc:'按需求单并行产出电商图、爆款图与配套文案；成品附件验收、版本留痕、图库归档。',
+chain:[{n:'设计需求受理',k:'start'},{n:'电商图 / 爆款图 / 文案',k:'parallel'},{n:'需求方验收',k:'approval'},{n:'成品归档',k:'human'},{n:'结束',k:'end'}],
+todos:[
+ {title:'电商主图 × 3 张',status:'todo',due:'明日 12:00',deliverable:'成品 + 源文件附件',accept:['尺寸合规','品牌约束满足','清单逐项打勾']},
+ {title:'详情长图',status:'todo',due:'明日 18:00',deliverable:'长图附件',accept:['信息层级清晰','版权素材标注']},
+ {title:'爆款封面 / 钩子图',status:'doing',due:'今日',deliverable:'成品组图 + 备选',accept:['风格统一','方案可对比']},
+ {title:'配套图上文案',status:'todo',due:'随图交付',deliverable:'ds-copy 文案稿',accept:['简短合规','与图匹配']},
+ {title:'成品入图库归档',status:'todo',due:'验收后',deliverable:'ds-library 版本条目',accept:['版本不覆盖','授权说明完整']}],
+plugins:[
+ {id:'ds-task',name:'出图任务',type:'flow',desc:'用途位、尺寸、数量、风格、品牌约束与成品附件。',rows:[['任务','用途位','尺寸','数量','状态'],['主图设计','主图','示例 800×800','3','待提交']],landing:'flow-design 验收后归档'},
+ {id:'ds-library',name:'我的图库',type:'board',desc:'成品图、版本、用途与版权说明。',landing:'模板脱敏后可公开'},
+ {id:'ds-copy',name:'配套文案',type:'ai',desc:'图上字、卖点短句、slogan 备选。',landing:'随图任务提交'},
+ {id:'ds-standard',name:'设计规范',type:'kb',desc:'只读公开页：尺寸、字体、色值、版式与版权规则。',landing:'引用公开 Wiki'}],
+chat:[{who:'ai',text:'该用途位常用尺寸已在设计规范中列出，可作为出图依据（静态示例）。'},{who:'me',text:'给一版主图卖点短句备选。'},{who:'ai',text:'文案备选已生成（静态示例），不代替设计出图。'}]},
+w7:{short:'商业拍摄',layer:'执行层',color:'#8a5a00',colorBg:'#fdf6e8',role:'executor · 制片 / 摄影 / 后期',flow:'flow-shoot-project',
+desc:'任务单 → 前期筹备 → 现场拍摄 → 选片交付；纯人工执行，系统只做单据、证据与版本归档，不控制相机。',
+chain:[{n:'拍摄任务单',k:'start'},{n:'前期：通告 / 分镜 / 清单',k:'human'},{n:'方案确认',k:'approval'},{n:'现场执行',k:'human'},{n:'选片交付',k:'human'},{n:'验收归档',k:'approval'},{n:'结束',k:'end'}],
+todos:[
+ {title:'通告单与分镜筹备',status:'todo',due:'拍摄前 2 天',deliverable:'通告单 + 资源清单',accept:['人员/场地/设备明确','风险点标注']},
+ {title:'现场拍摄执行与记录',status:'todo',due:'拍摄当日',deliverable:'原片素材 + 异常记录',accept:['素材完整可溯','现场检查清单留痕']},
+ {title:'选片与成片交付',status:'todo',due:'拍摄后 3 日',deliverable:'成片/精修清单附件',accept:['对应任务单要求逐项达成','版本说明清楚']},
+ {title:'素材归档与授权标记',status:'todo',due:'验收后',deliverable:'sp-archive 版本条目',accept:['原件不覆盖','敏感件私有']}],
+plugins:[
+ {id:'sp-task',name:'拍摄任务单',type:'flow',desc:'主题、交付要求、分镜、场景、档期与设备清单。',landing:'flow-shoot-project 主流程'},
+ {id:'sp-checklist',name:'现场检查清单',type:'board',desc:'通告项、到场、设备、备份与异常记录。',landing:'执行证据随任务提交'},
+ {id:'sp-archive',name:'成片归档',type:'material',desc:'原片/成片/精修清单、版本与可见性标记。',landing:'成果库；合同与原片私有'}],
+chat:[{who:'ai',text:'根据任务单可生成拍摄通告草稿与设备核对清单（静态示例）。'},{who:'me',text:'先出一版通告单。'},{who:'ai',text:'草稿已生成，需制片确认后排期。'}]},
+w8:{short:'仓储',layer:'销售层',color:'#7a4fa3',colorBg:'#f5effb',role:'executor · 仓管 + manager 主管复核',flow:'flow-warehouse-exception',
+desc:'退货 / 库存 / 装运以台账轻录入为主；缺货、破损、错发、积压等异常走审批协同流程；明细数据不公开。',
+chain:[{n:'异常上报（日常为台账录入）',k:'start'},{n:'主管复核',k:'approval'},{n:'并行处理任务',k:'parallel'},{n:'闭环确认',k:'approval'},{n:'台账回填归档',k:'end'}],
+todos:[
+ {title:'退货单 R-2026-1108 质检处理',status:'doing',due:'今日',deliverable:'wh-return 状态闭环',accept:['收件/质检/结论完整','凭证附件','异常可升级']},
+ {title:'SKU-A 低库存预警处置',status:'todo',due:'明日',deliverable:'补货建议任务',accept:['数量与安全库存对比清楚','责任建议明确']},
+ {title:'待发货单 S-8821 装运',status:'todo',due:'今日截单前',deliverable:'wh-ship 发货记录',accept:['明细与承运单号完整','签收状态跟踪']},
+ {title:'积压库存清理建议',status:'todo',due:'本周',deliverable:'积压条目与处置建议',accept:['批次/库位清楚','处置方式建议']}],
+plugins:[
+ {id:'wh-return',name:'退货台账',type:'board',desc:'单号、关联活动、SKU、数量、原因、收件、质检、处理结论、经办人。',rows:[['单号','SKU','数量','原因','处理结论'],['R-示例','A-01','2','质量咨询','质检中']],landing:'异常项一键转流程；明细私有'},
+ {id:'wh-stock',name:'库存台账',type:'board',desc:'SKU、库位、进/出/结存、安全库存、批次、预警。',landing:'只读汇总；禁止公开成本数量'},
+ {id:'wh-ship',name:'装运台账',type:'board',desc:'发货单号、明细、承运、物流单号、发货/签收、异常。',landing:'与活动/订单关联（本期导入）'},
+ {id:'wh-exception',name:'异常上报',type:'flow',desc:'缺货/破损/错发/积压上报 → 主管复核 → 处理闭环。',landing:'flow-warehouse-exception'}],
+chat:[{who:'ai',text:'当前 1 条退货质检中、1 项低于安全库存；库存数量属敏感数据，问答不回传明细。'},{who:'me',text:'生成补货建议草稿。'},{who:'ai',text:'建议草稿已生成（静态示例），提交后由主管复核。'}]},
+c1:{short:'客服控制台',layer:'销售层',color:'#7a4fa3',colorBg:'#f5effb',role:'executor · 客服 + 主管汇总',flow:'无独立审批流（升级复用主流程）',
+dashTitle:'控制台模块（工单 · 数据 · FAQ · 升级）',
+desc:'工单记录、销售数据对接视图、FAQ 口径与升级转办；本期外部数据以手工/CSV 导入占位，不直连订单系统。',
+chain:[{n:'工单受理',k:'human'},{n:'AI 口径建议',k:'ai'},{n:'人工确认回复',k:'human'},{n:'可解决?',k:'condition'},{n:'升级转办',k:'human'},{n:'结果回填',k:'end'}],
+dash:[{name:'客服工单',metric:'12 件待处理',desc:'售前/物流/退货/质量/活动分类；状态流转与结论记录'},{name:'销售数据对接',metric:'本期导入占位',desc:'订单量、退款率、热销 SKU、活动核销汇总视图'},{name:'FAQ 口径库',metric:'26 条已审核',desc:'标准问答与适用活动；审核后公开引用'},{name:'升级转办',metric:'3 件待下游处理',desc:'一键生成管理/仓储任务，结果回填工单'}],
+plugins:[
+ {id:'sc-ticket',name:'客服工单',type:'board',desc:'来源、匿名客户标识、分类、状态、关联单号、处理人、结论、满意度。',rows:[['工单号','分类','状态','关联单号','处理人'],['T-示例','退货咨询','处理中','S-示例','客服甲']],landing:'明细私有；FAQ 沉淀公开'},
+ {id:'sc-data',name:'销售数据对接',type:'console',desc:'CSV 导入/占位接口；只读汇总，标注来源与时间。',landing:'指标只读；不替代 CRM/订单系统'},
+ {id:'sc-faq',name:'FAQ 口径库',type:'kb',desc:'标准问答、适用活动、更新人与审核状态。',landing:'审核后进入公开知识层'},
+ {id:'sc-escalate',name:'升级转办',type:'flow',desc:'补发/退货/投诉/规则咨询升级，选择目标工作台与负责人。',landing:'生成管理或仓储任务并回填'}],
+chat:[{who:'ai',text:'该问题匹配已审核 FAQ“退货时效”，可先引用口径草稿，避免客户信息外发。'},{who:'me',text:'生成回复草稿，并把无法解决的库存疑问升级给主管。'},{who:'ai',text:'回复草稿与升级建议已生成（静态示例），升级需人工确认。'}]}
+/*__MORE_VIEWS__*/
+};
+let activePlugin={};
+function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
+function toast(t){const el=document.getElementById('toast');el.textContent=t;el.style.display='block';clearTimeout(el._t);el._t=setTimeout(()=>el.style.display='none',1800)}
+function statusPill(s){const map={todo:['待办','st-todo'],doing:['进行中','st-doing'],done:['已完成','st-done'],overdue:['逾期','st-overdue'],rework:['退回','st-rework'],pending:['审批中','st-pending']};const m=map[s]||['待办','st-todo'];return '<span class="st '+m[1]+'">'+m[0]+'</span>'}
+function renderNav(){
+  const groups={管理层:['w1'],电商层:['w2','w3','w4'],执行层:['w5','w6','w7'],销售层:['w8','c1']};
+  const hash=location.hash.replace('#','')||'w1';
+  let html='';
+  Object.keys(groups).forEach(g=>{html+='<div class="nav-group"><span class="nav-label">'+g+'</span>'+groups[g].map(id=>'<button data-id="'+id+'" class="'+(id===hash?'active':'')+'">'+esc(VIEWS[id].short)+'</button>').join('')+'</div>'});
+  document.getElementById('nav').innerHTML=html;
+  document.querySelectorAll('#nav button').forEach(b=>b.onclick=()=>{location.hash=b.dataset.id;render()});
+}
+function renderMeta(v){
+  document.getElementById('meta').innerHTML=
+    '<span class="badge" style="background:'+v.colorBg+';color:'+v.color+'">'+esc(v.layer)+'</span>'+
+    '<span class="badge" style="background:var(--gray-bg);color:var(--gray)">'+esc(v.role)+'</span>'+
+    '<span class="flowid">'+esc(v.flow)+'</span>'+
+    '<div class="desc">'+esc(v.desc)+'</div>';
+}
+function renderChain(v){
+  document.getElementById('chain').innerHTML=v.chain.map(n=>'<span class="node k-'+n.k+'">'+esc(n.n)+'<span class="k">'+KIND_LABEL[n.k]+'</span></span><span class="arrow">→</span>').slice(0,-1).join('');
+}
+function renderChips(v){
+  const list=v.plugins;if(!activePlugin[v.id])activePlugin[v.id]=list[0].id;
+  document.getElementById('chips').innerHTML=list.map(p=>'<button class="chip '+(activePlugin[v.id]===p.id?'on':'')+'" data-id="'+p.id+'">'+esc(p.name)+'<span class="t">'+TYPE_LABEL[p.type]+'</span></button>').join('');
+  document.querySelectorAll('#chips .chip').forEach(b=>b.onclick=()=>{activePlugin[v.id]=b.dataset.id;render()});
+}
+function renderLeft(v){
+  document.getElementById('leftTitle').textContent=v.dash?(v.dashTitle||'管理看板（受理 · 审批 · 督办 · 归档）'):'我的待办（首页主区，唯一操作入口）';
+  let html='';
+  if(v.dash){html=v.dash.map(d=>'<div class="card"><div class="card-head"><span class="card-title">'+esc(d.name)+'</span><span class="dash-metric">'+esc(d.metric)+'</span></div><div class="meta-line">'+esc(d.desc)+'</div><button class="btn ghost" onclick="toast(\'静态原型：打开 '+esc(d.name)+'\')">打开</button></div>').join('')}
+  else{html=v.todos.map((t,i)=>'<div class="card '+(i===0?'active':'')+'"><div class="card-head"><span class="card-title">'+esc(t.title)+'</span>'+statusPill(t.status)+'</div><div class="meta-line">期限：'+esc(t.due)+' · 交付物：'+esc(t.deliverable)+'</div><ul class="accept">'+t.accept.map(a=>'<li>'+esc(a)+'</li>').join('')+'</ul><button class="btn" onclick="toast(\'静态原型：提交后进度同步到管理台（不真实提交）\')">提交交付</button> <button class="btn ghost" onclick="toast(\'静态原型：AI 仅生成草稿，需本人确认\')">帮我起草</button></div>').join('')}
+  document.getElementById('todoList').innerHTML=html;
+}
+function renderChat(v){
+  document.getElementById('chat').innerHTML=v.chat.map(m=>'<div class="msg '+m.who+'"><span class="bubble">'+esc(m.text)+'</span></div>').join('');
+  document.getElementById('chat').scrollTop=9999;
+}
+function renderPanel(v){
+  const p=v.plugins.find(x=>x.id===activePlugin[v.id])||v.plugins[0];
+  let rows='';
+  if(p.rows){rows='<table><thead><tr>'+p.rows[0].map(h=>'<th>'+esc(h)+'</th>').join('')+'</tr></thead><tbody>'+p.rows.slice(1).map(r=>'<tr>'+r.map(c=>'<td>'+esc(c)+'</td>').join('')+'</tr>').join('')+'</tbody></table>'}
+  const fields=p.fields?('<dl class="pf">'+p.fields.map(f=>'<dt>'+esc(f[0])+'</dt><dd>'+esc(f[1])+'</dd>').join('')+'</dl>'):'';
+  document.getElementById('panel').innerHTML='<div class="panel-head"><span class="card-title">插件面板：'+esc(p.name)+'</span><span class="type">'+TYPE_LABEL[p.type]+'</span><span class="landing">沉淀/去向：'+esc(p.landing)+'</span></div><div class="meta-line">'+esc(p.desc)+'</div>'+fields+rows+'<div class="meta-line" style="margin-top:8px">面板为静态占位：字段、记录行均为示例；落地形态见《各工作台工作流详解.md》第 1 节插件注册表。</div>';
+}
+function renderTable(v){
+  document.getElementById('pluginTable').innerHTML='<table><thead><tr><th>插件 ID</th><th>名称</th><th>类型</th><th>用途</th><th>沉淀/去向</th></tr></thead><tbody>'+v.plugins.map(p=>'<tr><td>'+esc(p.id)+'</td><td>'+esc(p.name)+'</td><td>'+TYPE_LABEL[p.type]+'</td><td>'+esc(p.desc)+'</td><td class="landing">'+esc(p.landing)+'</td></tr>').join('')+'</tbody></table>';
+}
+function render(){const id=location.hash.replace('#','')||'w1';const v=VIEWS[id]||VIEWS.w1;renderNav();renderMeta(v);renderChain(v);renderChips(v);renderLeft(v);renderChat(v);renderPanel(v);renderTable(v)}
+window.addEventListener('hashchange',render);render();
+</script>
+</body>
+</html>

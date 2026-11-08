@@ -1,0 +1,90 @@
+{
+  "src": "D:\\prj\\zdh\\workbench-mockups\\工作台可视化原型.html",
+  "url": "file:///D:/prj/zdh/workbench-mockups/%E5%B7%A5%E4%BD%9C%E5%8F%B0%E5%8F%AF%E8%A7%86%E5%8C%96%E5%8E%9F%E5%9E%8B.html",
+  "outdir": "D:\\prj\\zdh\\workbench-mockups\\_shots",
+  "include": [
+    "lint",
+    "screenshots",
+    "structure"
+  ],
+  "shots": {
+    "desktop": {
+      "screenshot": "D:\\prj\\zdh\\workbench-mockups\\_shots\\工作台可视化原型_desktop.jpg",
+      "screenshotBytes": 81351,
+      "truncated": false,
+      "structure": {
+        "title": "多子工作台 · 简洁原型（静态示例）",
+        "firstH1": "",
+        "viewport": {
+          "w": 1440,
+          "h": 900
+        },
+        "fullpage": {
+          "w": 1440,
+          "h": 1249
+        },
+        "counts": {
+          "section": 5,
+          "h1": 0,
+          "h2": 0,
+          "img": 0,
+          "canvas": 0,
+          "svg": 0,
+          "links": 0,
+          "buttons": 25
+        }
+      },
+      "consoleErrors": [],
+      "consoleWarnings": [],
+      "horizontalOverflow": [],
+      "resourceErrors": [],
+      "reportSource": "cdp"
+    }
+  },
+  "engine": "chrome_cli",
+  "chromiumExec": "C:\\Users\\hongcheng/AppData/Local/ms-playwright\\chromium_headless_shell-1228\\chrome-headless-shell-win64\\chrome-headless-shell.exe",
+  "engineDegraded": true,
+  "engineDegradedReason": "playwright 未装",
+  "elapsedSec": 3.75,
+  "schemaVersion": 2,
+  "status": "pass",
+  "engineInfo": {
+    "name": "chrome_cli",
+    "degraded": true,
+    "degradedReasons": [
+      "playwright 未装"
+    ]
+  },
+  "input": {
+    "original": "D:\\prj\\zdh\\workbench-mockups\\工作台可视化原型.html",
+    "resolvedPath": "D:\\prj\\zdh\\workbench-mockups\\工作台可视化原型.html",
+    "baseUrl": "file:///D:/prj/zdh/workbench-mockups/%E5%B7%A5%E4%BD%9C%E5%8F%B0%E5%8F%AF%E8%A7%86%E5%8C%96%E5%8E%9F%E5%9E%8B.html",
+    "protocol": "file",
+    "cwd": "D:\\prj\\zdh",
+    "mediaMode": {
+      "reducedMotion": true
+    }
+  },
+  "artifacts": {
+    "screenshots": [
+      {
+        "viewport": "desktop",
+        "path": "D:\\prj\\zdh\\workbench-mockups\\_shots\\工作台可视化原型_desktop.jpg",
+        "size": 81351,
+        "visualCoverage": {
+          "complete": true,
+          "reason": null
+        }
+      }
+    ]
+  },
+  "summary": {
+    "blocker": 0,
+    "error": 0,
+    "warning": 0,
+    "info": 0
+  },
+  "findings": [],
+  "prioritizedActions": [],
+  "reportPath": "D:\\prj\\zdh\\workbench-mockups\\_shots\\report.json"
+}
