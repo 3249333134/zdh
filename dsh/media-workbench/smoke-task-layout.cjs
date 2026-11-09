@@ -42,6 +42,8 @@ exports.check = async (win, logs) => {
     await post('estimate-unscheduled')
     const added = await post('add', { projectId, task: { title: '排期直达剪辑测试', module: 'autoclip', kind: 'edit', estimateMin: 30, dependencies: [] } })
     const clipTask = added.result
+    const dramaAdded = await post('add', { projectId, task: { title: '排期直达影策测试', module: 'drama', kind: 'text', estimateMin: 30, dependencies: [] } })
+    const dramaTask = dramaAdded.result
     assert('新增事项自动填入预计时间', clipTask.startAt && clipTask.endAt && clipTask.timeSource === 'estimate')
     await win.webContents.reload(); await openDesk(win)
     win.show(); win.setSize(1440, 960)
@@ -56,6 +58,15 @@ exports.check = async (win, logs) => {
     assert('日历任务提供直接办理入口', await run(`document.body.innerText.includes('去剪辑助手办理 →')`)); await shot('task-layout-quick-action')
     await click('去剪辑助手办理 →'); await sleep(1600)
     assert('直接跳转剪辑助手并携带事项', await run(`!!document.querySelector('iframe[title*="AutoClip"]') && document.querySelector('.md-task-strip')?.textContent.includes('排期直达剪辑测试')`))
+    await nav('排期'); await click('日'); await sleep(250)
+    const dramaDate = new Date(dramaTask.startAt), dramaKey = `${dramaDate.getFullYear()}-${String(dramaDate.getMonth()+1).padStart(2,'0')}-${String(dramaDate.getDate()).padStart(2,'0')}`
+    await run(`(()=>{const i=document.querySelector('input[aria-label="查看日期"]');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(i,${JSON.stringify(dramaKey)});i.dispatchEvent(new Event('input',{bubbles:true}));i.dispatchEvent(new Event('change',{bubbles:true}))})()`)
+    await sleep(250)
+    await run(`[...document.querySelectorAll('.md-agenda-chip')].find(el=>el.textContent.includes('排期直达影策测试')).click()`)
+    await click('去影策办理 →')
+    for (let i = 0; i < 60; i++) { current = await state(); if (current.state.workflow.tasks.find(row => row.id === dramaTask.id)?.links.yingceCanvasId) break; await sleep(500) }
+    assert('影策办理关联真实画布', !!current.state.workflow.tasks.find(row => row.id === dramaTask.id)?.links.yingceCanvasId)
+    assert('直达影策保留事项要求', await run(`document.querySelector('.md-task-strip')?.textContent.includes('排期直达影策测试')`))
     win.setSize(1050, 800); await run("document.querySelector('button[aria-label=\"收起对话\"]')?.click()"); await nav('内容'); assert('窄屏内容无横向溢出或重叠', await layout()); await shot('task-layout-content-narrow')
     await nav('排期'); assert('窄屏排期无横向溢出或重叠', await layout()); await shot('task-layout-calendar-narrow')
     current = await state(); const persisted = current.state.workflow.tasks.find(row => row.id === clipTask.id)

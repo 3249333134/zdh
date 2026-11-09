@@ -131,6 +131,17 @@ async function boot() {
   const canvasSession = await win.webContents.session.cookies.get({ url: 'http://127.0.0.1:13001', name: 'open_ai_canvas_session' });
   aiRuntime = { canvasCookie: canvasSession[0].value, clipPort };
   workflowOptions = { data, win, dialog, nativeKey, ffmpegBin, ...aiRuntime, registerChild: child => { children.add(child); child.once('exit', () => children.delete(child)); } };
+  let knowledgeCollecting = false;
+  const collectKnowledge = async () => {
+    if (knowledgeCollecting) return;
+    knowledgeCollecting = true;
+    try { const result = await require('./knowledge-collect.cjs')(workflowOptions); const file = path.join(data, 'dsh/media-desk/knowledge-external.json'); fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file + '.tmp', JSON.stringify(result)); fs.renameSync(file + '.tmp', file); }
+    catch (error) { log.write('知识来源收集暂不可用：' + error.message + '\n'); }
+    finally { knowledgeCollecting = false; }
+  };
+  await collectKnowledge();
+  setInterval(collectKnowledge, 30000).unref();
+
   const globalAI = unifiedAI.read(data);
   if (globalAI) {
     unifiedAI.prepareDsh(root, data, globalAI);
@@ -173,6 +184,7 @@ async function boot() {
   if (process.argv.includes('--autoclip')) {
     await win.webContents.executeJavaScript(`[...document.querySelectorAll('.md-nav button')].find(el => el.textContent === '剪辑助手')?.click()`);
   }
+  if (process.argv.includes('--knowledge-check')) await require('./smoke-knowledge.cjs')(win, logs);
   if (process.argv.includes('--smoke-autoclip')) await require('./smoke-autoclip.cjs')(win, logs);
   if (process.argv.includes('--smoke-shared-ai')) await require('./smoke-shared-ai.cjs')(win, logs);
   if (process.argv.includes('--schedule-refresh')) await require('./smoke-task-layout.cjs').refresh(win, logs);

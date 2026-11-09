@@ -98,6 +98,7 @@ async function handle(input, options) {
   ledger[identity] = result; atomic(ledgerFile, ledger); return result;
 }
 module.exports = (input, options) => {
+  if (input.action === 'knowledge-read') return require('./knowledge-collect.cjs')(options);
   const key = input.task?.id + ':' + input.action;
   if (inflight.has(key)) return inflight.get(key);
   const operation = handle(input, options).finally(() => inflight.delete(key)); inflight.set(key, operation); return operation;
