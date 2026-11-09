@@ -1,0 +1,74 @@
+package database
+
+import (
+	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+
+	"yingce/backend/internal/logging"
+
+	"github.com/jackc/pgx/v5/stdlib"
+	"github.com/glebarez/sqlite"
+	"gorm.io/driver/postgres"
+	"gorm.io/gorm"
+)
+
+type Config struct {
+	Driver  string
+	DSN     string
+	DataDir string
+}
+
+func Open(config Config) (*gorm.DB, error) {
+	driver := strings.ToLower(strings.TrimSpace(config.Driver))
+	if driver == "" {
+		driver = "sqlite"
+	}
+	switch driver {
+	case "sqlite":
+		dsn := strings.TrimSpace(config.DSN)
+		if dsn == "" {
+			if err := os.MkdirAll(config.DataDir, 0o755); err != nil {
+				return nil, err
+			}
+			// Local pure-Go SQLite (github.com/glebarez/sqlite / modernc.org/sqlite).
+			// This driver only executes repeated _pragma parameters; the legacy
+			// mattn/go-sqlite3 query options above are intentionally not used here.
+			dbPath := filepath.Join(config.DataDir, "open_ai_canvas.db")
+			dsn = "file:" + filepath.ToSlash(dbPath) +
+				"?_pragma=busy_timeout(5000)" +
+				"&_pragma=journal_mode(WAL)" +
+				"&_pragma=foreign_keys(ON)" +
+				"&_pragma=synchronous(NORMAL)"
+		}
+		return gorm.Open(sqlite.Open(dsn), &gorm.Config{Logger: logging.GormLogger()})
+	case "postgres", "postgresql":
+		dsn := strings.TrimSpace(config.DSN)
+		if dsn == "" {
+			return nil, errors.New("PostgreSQL 模式必须配置 DATABASE_URL")
+		}
+		return gorm.Open(postgres.New(postgres.Config{
+			DSN:          dsn,
+			OptionOpenDB: []stdlib.OptionOpenDB{stdlib.OptionBeforeConnect(configurePostgresConnection)},
+		}), &gorm.Config{Logger: logging.GormLogger()})
+	default:
+		return nil, fmt.Errorf("不支持的数据库驱动：%s", driver)
+	}
+}
+
+func ConfigurePool(db *gorm.DB) error {
+	sqlDB, err := db.DB()
+	if err != nil {
+		return err
+	}
+	if db.Dialector.Name() == "postgres" {
+		sqlDB.SetMaxOpenConns(30)
+		sqlDB.SetMaxIdleConns(10)
+		return nil
+	}
+	sqlDB.SetMaxOpenConns(8)
+	sqlDB.SetMaxIdleConns(4)
+	return nil
+}
