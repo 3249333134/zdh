@@ -27,7 +27,11 @@ workbench/lib/
 /dsh/.local-runtimes/
 /dsh/autoclip/
 /dsh/open-ai-canvas/
-/dsh/media_desk/
+# media_desk 为本地定制版，源码入库；排除其独立 git 元数据与构建产物
+/dsh/media_desk/.git/
+/dsh/media_desk/node_modules/
+/dsh/media_desk/dist/
+/dsh/media_desk/*.tgz
 # 清理脚本的本机扫描产物
 /cleanup-reports/
 
