@@ -132,7 +132,7 @@ function ModelAlert({ model, error }) {
 export function ChatDock() {
   const useDeskTaskLabel = useDesk(s => {
     const task = (s.workflow || s.state?.workflow)?.tasks.find(row => row.id === s.activeTaskId)
-    return task ? `当前事项 · ${task.title}` : ''
+    return task && (s.view === task.module || s.view === 'content' || s.view === 'schedule') ? `当前事项 · ${task.title}` : ''
   })
   const view = useDesk(s => s.view)
   const context = useDesk(s => s.pageContext)
@@ -189,7 +189,7 @@ export function ChatDock() {
           </>
         )}
         top={<><p className="md-assistant-scope">{useDeskTaskLabel || (view === 'drama' ? `影策 · ${context?.title || '当前页面'}` : view === 'autoclip' ? '剪辑助手 · AutoClip（请在页面中操作剪辑）' : t('自媒体工作台 · 当前页面'))}</p>{model && modelOk === false && modelError ? <ModelAlert model={model} error={modelError} /> : null}</>}
-        suggestions={SUGGESTIONS.map(row => t(row))}
+        suggestions={useDeskTaskLabel ? ['查看交付结果', '执行当前AI事项'] : view === 'drama' ? ['查看当前画布', '打开画布列表'] : SUGGESTIONS.map(row => t(row))}
         placeholder={t('想改什么，直接说')}
         messageActions={messageActions}
       />

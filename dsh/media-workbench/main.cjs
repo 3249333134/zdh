@@ -184,6 +184,8 @@ async function boot() {
   if (process.argv.includes('--autoclip')) {
     await win.webContents.executeJavaScript(`[...document.querySelectorAll('.md-nav button')].find(el => el.textContent === '剪辑助手')?.click()`);
   }
+  if (process.argv.includes('--profiles-check')) await require('./smoke-profiles.cjs')(win, logs);
+  if (process.argv.includes('--calendar-check')) await require('./smoke-task-layout.cjs').calendar(win, logs);
   if (process.argv.includes('--knowledge-check')) await require('./smoke-knowledge.cjs')(win, logs);
   if (process.argv.includes('--smoke-autoclip')) await require('./smoke-autoclip.cjs')(win, logs);
   if (process.argv.includes('--smoke-shared-ai')) await require('./smoke-shared-ai.cjs')(win, logs);

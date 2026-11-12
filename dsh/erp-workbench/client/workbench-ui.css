@@ -1,0 +1,65 @@
+.erp-root {
+  --erp-ink: var(--dsw-alias-label-primary, #1d2939);
+  --erp-muted: var(--dsw-alias-label-secondary, #526174);
+  --erp-page: var(--dsw-alias-bg-base, #f7f8fa);
+  --erp-surface: var(--dsw-alias-bg-layer-2, #fff);
+  --erp-line: var(--dsw-alias-border-l2, #dce1e8);
+  --erp-hover: var(--dsw-alias-interactive-bg-hover, #edf3fc);
+  --erp-primary: var(--dsw-alias-button-primary-fill, #2457a7);
+  --erp-on-primary: var(--dsw-alias-label-primary-inverted, #fff);
+  min-height: 0;
+  background: var(--erp-page);
+  color: var(--erp-ink);
+  font-family: var(--dsw-font-family, system-ui);
+  container: erp-workbench / inline-size;
+}
+.erp-root [hidden] { display: none !important; }
+.erp-root > .erp-screen { display: flex; flex: 1; flex-direction: column; min-height: 0; overflow: auto; }
+.erp-root :is(.erp-toolbar,.erp-project-bar,.crm-tabs,.erp-local-note,.erp-member-toolbar,.erp-table-wrap,.erp-task,.erp-editor,.erp-project-form) {
+  background: var(--erp-surface);
+  border-color: var(--erp-line);
+}
+.erp-root .erp-toolbar { position: relative; z-index: 2; flex: none; min-height: 58px; gap: 12px; padding: 8px 18px; }
+.erp-toolbar h1 { font-size: 16px; white-space: nowrap; }
+.erp-root :is(.erp-toolbar nav,.erp-filters nav) { display: flex; width: auto; gap: 2px; padding: 3px; border-radius: 10px; background: var(--erp-hover); }
+.erp-root :is(.erp-toolbar nav,.erp-filters nav) button { border: 0; background: transparent; padding: 7px 11px; white-space: nowrap; }
+.erp-root :is(.erp-toolbar nav,.erp-filters nav) button[aria-pressed=true], .erp-root .erp-primary { background: var(--erp-primary); color: var(--erp-on-primary); border-color: var(--erp-primary); }
+.erp-root :is(.erp-toolbar nav,.erp-filters nav) button[aria-pressed=true]:hover, .erp-root .erp-primary:hover { background: var(--dsw-alias-button-primary-hover, #1b4589); }
+.erp-root button { border-radius: 8px; }
+.erp-root :is(button,input,select,textarea) { color: var(--erp-ink); }
+.erp-root :is(input,select,textarea) { background: var(--erp-surface); border-color: var(--dsw-alias-border-l4, #b7c3d4); }
+.erp-root :is(.erp-task-link,.erp-project-heading p,.erp-project-summary,.erp-local-note,.crm-footnote,.crm-tabs span,.erp-note,.erp-editor label,.erp-editor time,.erp-task p,.erp-task footer,.erp-column-empty,.erp-add-task) { color: var(--erp-muted); }
+.erp-root .erp-local-note { padding: 6px 24px; min-height: 39px; }
+.erp-root :is(.erp-column,.erp-table-wrap th) { background: var(--erp-hover); color: var(--erp-ink); }
+.erp-root .erp-task:hover { background: var(--erp-hover); }
+.erp-root .erp-project-heading h2 { font-size: 23px; overflow-wrap: anywhere; }
+.erp-root .erp-project-summary { margin: 12px 0 18px; }
+.erp-root .erp-project-main { padding: 22px 24px; }
+.erp-services { position: relative; }
+.erp-services summary { cursor: pointer; padding: 7px 10px; border-radius: 8px; color: var(--erp-ink); white-space: nowrap; }
+.erp-services summary:hover { background: var(--erp-hover); }
+.erp-service-menu { position: absolute; right: 0; top: calc(100% + 6px); min-width: 150px; padding: 6px; display: grid; gap: 4px; background: var(--erp-surface); border: 1px solid var(--erp-line); border-radius: 10px; box-shadow: 0 8px 24px #0002; }
+.erp-service-menu button { text-align: left; }
+.erp-dialog { width: min(620px, calc(100vw - 32px)); max-height: min(780px, calc(100dvh - 44px)); padding: 0; border: 1px solid var(--erp-line); border-radius: 16px; background: var(--erp-surface); color: var(--erp-ink); box-shadow: 0 18px 60px #0003; }
+.erp-dialog[open] { display: flex; flex-direction: column; overflow: hidden; }
+.erp-dialog::backdrop { background: #10182766; }
+.erp-dialog :is(.erp-editor,.erp-project-form) { display: flex; flex: 1 1 auto; flex-direction: column; width: 100%; min-height: 0; padding: 0; border: 0; overflow: hidden; }
+.erp-dialog .erp-editor header { display: flex; flex: none; align-items: center; justify-content: space-between; padding: 14px 20px; margin: 0; border-bottom: 1px solid var(--erp-line); }
+.erp-dialog form { display: flex; flex: 1 1 auto; flex-direction: column; min-height: 0; overflow: hidden; }
+.erp-dialog .erp-editor-fields { flex: 1 1 auto; padding: 18px 20px; min-height: 0; overflow: auto; overscroll-behavior: contain; }
+.erp-dialog .erp-editor-actions { display: flex; flex: none; gap: 8px; justify-content: flex-end; padding: 12px 20px; border-top: 1px solid var(--erp-line); background: var(--erp-surface); }
+.erp-dialog .erp-delete { flex: none; margin: 0; padding: 8px 20px; border: 0; }
+.erp-dialog .erp-delete button { font-size: 12px; }
+.erp-dialog-error,.erp-discard { flex: none; padding: 10px 20px; margin: 0; background: #fff1ed; color: #8f2914; font-size: 13px; }
+.erp-discard { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.erp-discard span { flex: 1; }
+.erp-dialog details summary { cursor: pointer; padding: 9px 0; color: var(--erp-muted); }
+.erp-dialog details + details { border-top: 1px solid var(--erp-line); }
+.erp-root .erp-record-count { font-size: 12px; color: var(--erp-muted); white-space: nowrap; }
+@container erp-workbench (max-width: 650px) {
+  .erp-root .erp-toolbar { padding-inline: 12px; }
+  .erp-root .erp-toolbar h1 { width: auto; }
+  .erp-root .erp-project-main { padding: 16px 12px; }
+  .erp-root .erp-local-note { padding-inline: 12px; }
+  .erp-root .erp-filters nav { max-width: 100%; overflow: auto; }
+}

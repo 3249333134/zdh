@@ -6,11 +6,12 @@ import { ChatDock } from './chat.jsx'
 import { ContentView } from './content.jsx'
 import { YingceView } from './yingce.jsx'
 import { AutoClipView } from './autoclip.jsx'
-import { WorkflowRuntime, TaskStrip } from './workflow.jsx'
+import { WorkflowRuntime, TaskStrip, GenerationProcess } from './workflow.jsx'
 import { captureFiles, captureUrl, dispatchOps, loadDesk, setDesk, undo, useDesk } from './desk.js'
 import { InsightsView } from './insights.jsx'
 import { StyleView } from './style.jsx'
-import { ScheduleView } from './schedule.jsx'
+import { TaskScheduler } from './task-scheduler.jsx'
+import { useTrendUpdates } from './trends.jsx'
 import { ModelButton, ModelPicker } from './modelpick.jsx'
 import { WorkbenchSettings, WorkbenchToolbar, setWorkbenchThemeController } from './workbench-settings.jsx'
 import { Studio } from './studio.jsx'
@@ -33,7 +34,7 @@ const NAV = [
   { id: 'knowledge', label: '知识库' },
 ]
 
-const VIEWS = { home: HomeView, content: ContentView, schedule: ScheduleView, insights: InsightsView, style: StyleView, knowledge: KnowledgeView }
+const VIEWS = { home: HomeView, content: ContentView, schedule: TaskScheduler, insights: InsightsView, style: StyleView, knowledge: KnowledgeView }
 
 function CaptureDialog() {
   const capture = useDesk(s => s.capture)
@@ -129,6 +130,7 @@ function Desk() {
   const rootRef = React.useRef(null)
   const [width, setWidth] = React.useState(1600)
   const narrow = width < 1120
+  useTrendUpdates(ready)
 
   React.useEffect(() => { loadDesk() }, [])
   // 窗口窄的时候对话栏会盖住内容，默认收起，需要时再打开
@@ -177,6 +179,7 @@ function Desk() {
           <WorkbenchToolbar><SampleBadge /></WorkbenchToolbar>
         </header>
         {ready ? <TaskStrip /> : null}
+        {ready ? <GenerationProcess /> : null}
         <main className="md-content">
           {error ? (
             <div className="md-page"><p className="md-muted">{t('工作台加载失败：{error}', { error })}</p><button type="button" className="md-btn" onClick={loadDesk}>{t('重试')}</button></div>

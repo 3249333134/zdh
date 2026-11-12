@@ -3,14 +3,92 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const { execFile } = require('node:child_process');
 const { promisify } = require('node:util');
+const { pipeline } = require('node:stream/promises');
 const executeFile = promisify(execFile);
 const assets = require('./local-assets.cjs');
 const { atomic } = require('./unified-ai.cjs');
 const inflight = new Map();
+const canvasBase = 'http://127.0.0.1:18081/api';
+const safeId = value => typeof value === 'string' && /^[a-zA-Z0-9_-]{1,100}$/.test(value);
 async function api(base, route, { method = 'GET', body, cookie, token } = {}) {
   const response = await fetch(base + route, { method, headers: { 'content-type': 'application/json', ...(cookie ? { cookie: 'open_ai_canvas_session=' + cookie } : {}), ...(token ? { 'x-workbench-token': token } : {}) }, ...(body ? { body: JSON.stringify(body) } : {}), signal: AbortSignal.timeout(180000) });
   if (!response.ok) { const data = await response.json().catch(() => ({})); throw new Error(`功能交接失败（${response.status}）：${String(data.msg || data.detail || '').slice(0, 200)}`); }
   return response.json();
+}
+async function generate(input, { data, canvasCookie }) {
+  const { task, action } = input;
+  const mode = input.mode;
+  if (!safeId(task?.id) || !['text', 'image', 'video'].includes(mode)) throw new Error('无效影策生成事项');
+  const cookie = canvasCookie;
+  if (action === 'generation-start') {
+    const file = path.join(data, 'workflow-generation', task.id + '-' + task.version + '.json');
+    if (fs.existsSync(file)) return JSON.parse(fs.readFileSync(file, 'utf8'));
+    const config = require('./unified-ai.cjs').read(data);
+    const model = config?.[mode + 'Model'];
+    if (!model) throw new Error('请先在统一 AI 设置中配置影策' + { text: '文字', image: '图片', video: '视频' }[mode] + '模型');
+    const channel = (await api(canvasBase, '/admin/channels?limit=100', { cookie })).data?.channels?.find(row => row.name === '工作台统一 AI');
+    if (!channel?.id) throw new Error('统一 AI 渠道尚未同步到影策');
+    const prompt = String(input.prompt || '').slice(0, 24000);
+    if (!prompt.trim()) throw new Error('事项缺少生成说明');
+    const reference = input.reference;
+    const referenceImages = mode === 'video' && safeId(reference) ? [{ storageKey: 'resource:' + reference }] : [];
+    const configForTask = { channelId: channel.id, model, size: mode === 'image' ? '1024x1024' : '16:9', count: 1, videoSeconds: 5, vquality: '720p' };
+    const operation = mode === 'video' ? (referenceImages.length ? 'image_to_video' : 'text_to_video') : mode;
+    const response = await api(canvasBase, '/tasks', { method: 'POST', cookie, body: {
+      type: 'canvas_' + mode, model, operation, prompt,
+      input: { mode, prompt, config: configForTask, referenceImages, ...(mode === 'text' ? { textOptions: { stream: true } } : {}),
+        metadata: { clientOperationId: 'media-desk-' + task.id + '-' + task.version } },
+    } });
+    const id = response.data?.task?.id || response.data?.id;
+    if (!safeId(id)) throw new Error('影策未返回任务编号');
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    const result = { id };
+    atomic(file, result);
+    return result;
+  }
+  if (!safeId(input.id)) throw new Error('无效影策任务编号');
+  const dataRow = (await api(canvasBase, '/tasks/' + input.id, { cookie })).data;
+  const result = dataRow?.task || dataRow;
+  if (!result?.status) throw new Error('影策未返回任务状态');
+  if (['failed', 'cancelled'].includes(result.status)) return { terminalError: result.error || '影策生成失败或已取消' };
+  const progress = { status: result.status, stage: result.stage || '', percent: Number.isFinite(result.progress) ? result.progress : null };
+  if (result.status !== 'succeeded') {
+    if (mode === 'text' && result.status === 'running') {
+      const replay = (await api(canvasBase, '/tasks/' + input.id + '/text-deltas', { cookie }).catch(() => null))?.data;
+      progress.partial = replay?.finalText || replay?.textDraft || replay?.deltas?.map(row => row.content).join('') || result.textDraft || '';
+    }
+    return { pending: true, progress };
+  }
+  const output = JSON.parse(result.resultJson || '{}');
+  const native = { generationId: input.id, mode };
+  if (mode === 'text') {
+    const text = typeof output.text === 'string' ? output.text : output.text ? JSON.stringify(output.text) : '';
+    if (!text.trim()) throw new Error('影策未返回文字交付');
+    return { artifact: { text, model: result.model, native } };
+  }
+  const media = [output[mode], output[mode + 's']].flat().find(row => row?.resourceId || row?.storageKey);
+  const resourceId = result.outputs?.find(row => row.mediaType === mode)?.materializedAssetId || media?.resourceId ||
+    /^resource:([\w-]+)$/.exec(media?.storageKey || '')?.[1] ||
+    /\/resources\/([\w-]+)\/file/.exec(result.previewUrl || '')?.[1];
+  if (!safeId(resourceId)) {
+    if (['FAILED_RETRYABLE', 'FAILED_PERMANENT'].includes(result.resultState)) throw new Error('影策生成已结束，素材保存失败');
+    return { pending: true, progress: { ...progress, stage: '保存素材' } };
+  }
+  const route = '/resources/' + resourceId + '/file';
+  const response = await fetch(canvasBase + route, { headers: { cookie: 'open_ai_canvas_session=' + cookie }, redirect: 'error', signal: AbortSignal.timeout(120000) });
+  const ext = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp', 'video/mp4': 'mp4', 'video/webm': 'webm', 'video/quicktime': 'mov' }[response.headers.get('content-type')?.split(';')[0]];
+  if (!response.ok || !ext) throw new Error('影策素材不可读取');
+  const folder = path.join(data, 'workflow-derived', task.id);
+  fs.mkdirSync(folder, { recursive: true });
+  const file = path.join(folder, input.id + '.' + ext);
+  await pipeline(response.body, fs.createWriteStream(file + '.tmp'));
+  if (!fs.statSync(file + '.tmp').size) throw new Error('影策返回了空素材');
+  fs.renameSync(file + '.tmp', file);
+  const index = path.join(data, 'local-assets.json');
+  assets.importPaths(index, [file]);
+  const indexed = assets.publicIndex(index).find(row => path.resolve(row.path).toLowerCase() === path.resolve(file).toLowerCase());
+  if (!indexed) throw new Error('影策素材无法加入本地索引');
+  return { artifact: { text: '影策已生成并保存素材。', model: result.model, files: [{ ...indexed, name: indexed.title }], native: { ...native, resourceId, preview: 'http://127.0.0.1:13001' + indexed.url } } };
 }
 async function handle(input, options) {
   const { data, win, dialog, clipPort, canvasCookie, nativeKey, ffmpegBin } = options;
@@ -101,5 +179,5 @@ module.exports = (input, options) => {
   if (input.action === 'knowledge-read') return require('./knowledge-collect.cjs')(options);
   const key = input.task?.id + ':' + input.action;
   if (inflight.has(key)) return inflight.get(key);
-  const operation = handle(input, options).finally(() => inflight.delete(key)); inflight.set(key, operation); return operation;
+  const operation = (['generation-start', 'generation-result'].includes(input.action) ? generate(input, options) : handle(input, options)).finally(() => inflight.delete(key)); inflight.set(key, operation); return operation;
 };

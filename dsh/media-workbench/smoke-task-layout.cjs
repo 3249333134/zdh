@@ -35,7 +35,7 @@ exports.check = async (win, logs) => {
   const click = text => run(`(()=>{const b=[...document.querySelectorAll('button')].find(el=>el.textContent.trim()===${JSON.stringify(text)}); b?.click(); return !!b})()`)
   const nav = async text => { await run(`[...document.querySelectorAll('.md-nav button')].find(el=>el.textContent===${JSON.stringify(text)})?.click()`); await sleep(600) }
   const shot = async name => { await sleep(400); fs.writeFileSync(path.join(logs, name + '.png'), (await win.webContents.capturePage()).toPNG()) }
-  const layout = () => run(`(()=>{const outer=document.querySelector('.md-content-page,.md-schedule-page'), tabs=document.querySelector('.md-content-tabs'), head=document.querySelector('.md-workflow-page .md-page-head,.md-agenda-page .md-page-head');return !!outer&&!!tabs&&!!head&&tabs.getBoundingClientRect().bottom<=head.getBoundingClientRect().top&&outer.scrollWidth<=outer.clientWidth+1})()`)
+  const layout = () => run(`(()=>{const outer=document.querySelector('.md-content-page,.md-schedule-page'), toolbar=outer?.querySelector('.md-content-tabs,.md-unified-toolbar'), main=outer?.querySelector('.md-workflow-page .md-page-head,.md-cal-tile');return !!outer&&!!toolbar&&!!main&&toolbar.getBoundingClientRect().bottom<=main.getBoundingClientRect().top&&outer.scrollWidth<=outer.clientWidth+1})()`)
   try {
     let current = await state(), projectId = current.state.workflow.projects[0]?.id
     if (!projectId) throw new Error('隔离数据没有测试项目')
@@ -74,4 +74,90 @@ exports.check = async (win, logs) => {
     report.ok = true
   } catch (error) { report.ok = false; report.error = error.stack; await shot('task-layout-failure') }
   fs.writeFileSync(path.join(logs, 'task-layout-check.json'), JSON.stringify(report, null, 2))
+}
+
+// Read-only desktop check against the user's existing items and tasks.
+exports.calendar = async (win, logs) => {
+  const run = code => win.webContents.executeJavaScript(code)
+  const report = {}
+  const nav = async label => {
+    await run(`[...document.querySelectorAll('.md-nav button')].find(el => el.textContent === ${JSON.stringify(label)})?.click()`)
+    await sleep(450)
+  }
+  const shot = async name => fs.writeFileSync(path.join(logs, name + '.png'), (await win.webContents.capturePage()).toPNG())
+  try {
+    await openDesk(win)
+    win.show()
+    win.setSize(1440, 960)
+    const dockOpen = await run("!!document.querySelector('[aria-label=\"收起全局助手\"]')")
+    if (dockOpen) await run("document.querySelector('[aria-label=\"收起全局助手\"]').click()")
+    await nav('灵感')
+    report.cardLink = await run(`(() => {
+      const card = [...document.querySelectorAll('.md-card')].find(el => el.querySelector('.md-hot-badge'));
+      if (!card) return false;
+      const anchor = card.querySelector('.md-original-link');
+      if (!anchor?.href.startsWith('https:') || anchor.target !== '_blank') return false;
+      card.scrollIntoView({block: 'nearest'});
+      anchor.addEventListener('click', event => event.preventDefault(), { once: true });
+      anchor.click();
+      if (document.querySelector('.md-studio')) return false;
+      card.click();
+      return true;
+    })()`)
+    await sleep(450)
+    report.studioLink = await run("!!document.querySelector('.md-idea-card .md-original-link[href^=\"https:\"]') && !!document.querySelector('.md-idea-card .md-hot-badge')")
+    await shot('trend-original')
+    await nav('排期')
+    const state = (await api(win).state()).state
+    const tasks = state.workflow.tasks.filter(task => task.status !== 'cancelled' && !task.supersededBy)
+    const linked = new Set(tasks.filter(task => task.kind === 'publish' && (task.startAt || task.dueAt)).map(task => task.links?.itemId))
+    const content = state.items.filter(item => !linked.has(item.id))
+    const total = tasks.length + content.length
+    report.coverage = await run(`(() => {
+      const tray = document.querySelector('.md-tray-scroll');
+      const scheduled = tray?.querySelectorAll('.md-agenda-all button').length || 0;
+      const pending = [...tray.querySelectorAll('.md-tray-item,.md-tray-card')].filter(el => !el.closest('.md-agenda-all')).length;
+      return {scheduled, pending};
+    })()`)
+    report.allRows = report.coverage.scheduled + report.coverage.pending === total
+    report.wide = await run(`(() => {
+      const month = document.querySelector('.md-cal-tile'), rail = document.querySelector('.md-rail-col');
+      return !!month && !!rail && month.getBoundingClientRect().right < rail.getBoundingClientRect().left;
+    })()`)
+    await shot('calendar-unified-wide')
+    report.taskAction = await run(`(() => {
+      const task = document.querySelector('.md-cal-workflow-chip') || document.querySelector('.md-cal-pending input')?.nextElementSibling;
+      task?.click();
+      return !!task;
+    })()`)
+    await sleep(300)
+    report.taskAction &&= await run("!!document.querySelector('.md-agenda-task-action button')")
+    await run("document.querySelector('.md-dialog-head button[aria-label=\"关闭\"]')?.click()")
+    report.dropPreview = await run(`(() => {
+      const task = document.querySelector('.md-cal-pending .md-tray-item[draggable="true"]');
+      const cell = document.querySelector('.md-cal-cell.is-today');
+      if (!task || !cell) return false;
+      const dataTransfer = new DataTransfer();
+      task.dispatchEvent(new DragEvent('dragstart', { bubbles: true, dataTransfer }));
+      cell.dispatchEvent(new DragEvent('drop', { bubbles: true, dataTransfer }));
+      return true;
+    })()`)
+    await sleep(500)
+    report.dropPreview &&= await run("!!document.querySelector('.md-schedule-preview')")
+    await run("document.querySelector('.md-dialog-head button[aria-label=\"关闭\"]')?.click()")
+    win.setSize(1050, 800)
+    await sleep(450)
+    report.narrow = await run(`(() => {
+      const page = document.querySelector('.md-schedule-page'), month = document.querySelector('.md-cal-tile');
+      return !!month && page.scrollWidth <= page.clientWidth + 1;
+    })()`)
+    await shot('calendar-unified-narrow')
+    win.setSize(1440, 960)
+    if (dockOpen) await run("document.querySelector('[aria-label=\"打开全局助手\"]')?.click()")
+    report.ok = report.cardLink && report.studioLink && report.allRows && report.wide && report.narrow && report.taskAction && report.dropPreview
+  } catch (error) {
+    report.ok = false
+    report.error = error.message
+  }
+  fs.writeFileSync(path.join(logs, 'calendar-check.json'), JSON.stringify(report, null, 2))
 }

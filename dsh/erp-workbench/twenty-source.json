@@ -1,0 +1,10 @@
+{
+  "repository": "https://github.com/twentyhq/twenty",
+  "deploymentReference": "https://github.com/twentyhq/twenty/blob/main/packages/twenty-docker/docker-compose.yml",
+  "licenseReference": "https://github.com/twentyhq/twenty/blob/main/LICENSE",
+  "serviceOrigin": "http://127.0.0.1:13580",
+  "image": "twentycrm/twenty",
+  "defaultTag": "v2.38.1",
+  "integration": "Optional independent official service via iframe or external browser; no upstream source bundled",
+  "localMode": "Independent CRM implementation with fictional seed data; no automatic synchronization"
+}

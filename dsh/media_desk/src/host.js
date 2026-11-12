@@ -1,3 +1,5 @@
+import { AudienceService } from './audience.js'
+import { TrendService } from './trends.js'
 import { KnowledgeService, knowledgeContext } from './knowledge.js'
 // dsh-media-desk host 半片：/media-desk/* 接口、文件服务和模型调用。
 import { createReadStream } from 'node:fs'
@@ -17,7 +19,6 @@ import { applyOps, newId } from './ops.js'
 import { applyRevision, Producer } from './produce.js'
 import { publicSettings, Settings, imageReady } from './settings.js'
 import { WorkflowService } from './workflow.js'
-import { productionSpec } from './production-spec.js'
 import { normalizeStyle, stylePrompts } from './style.js'
 import { dshHome, Store } from './store.js'
 import { currentLang, platformName, tr, withLang } from './i18n.js'
@@ -141,10 +142,22 @@ function parseAssistantTasks(text) {
 async function chatTurn(ctx, store, desk, body) {
   const message = String(body.message || '').trim()
   if (!message) throw Object.assign(new Error(tr('消息为空')), { status: 400 })
+  if (body.pageContext?.module === 'yingce') return yingceChat(ctx, store, body)
   if (body.workflowTaskId) {
     const workflow = await desk.workflow.read()
     const task = workflow.tasks.find(row => row.id === body.workflowTaskId)
     if (!task) throw new Error('当前事项不存在，请刷新')
+    const command = message.replace(/[。！!]$/, '')
+    if (/^(查看当前事项|查看交付结果|执行当前AI事项|提交当前事项到影策)$/i.test(command)) {
+      const submit = /^(执行|提交)/.test(command)
+      const result = submit ? await desk.workflow.action('queue-generation', { id: task.id, revision: workflow.revision }) : null
+      return store.mutate('事项对话', draft => {
+        const at = new Date().toISOString()
+        const answer = { id: newId('c'), role: 'assistant', text: submit ? '已排队提交影策，生成结果会出现在事项的交付记录。' : '已打开「' + task.title + '」的事项与交付记录。', at }
+        draft.chat.push({ id: newId('c'), role: 'user', text: message, at }, answer)
+        return { answer, state: draft, workflow: result?.workflow || workflow, actions: submit ? [] : [{ type: 'workflow-open', id: task.id }] }
+      }, { undoable: false })
+    }
     const project = workflow.projects.find(row => row.id === task.projectId)
     const inputs = workflow.tasks.filter(row => task.dependencies.includes(row.id))
     const result = await callModel(ctx, { system: '你是个人自媒体工作台的事项助手。根据实际项目、任务和前置交付回答，指出下一步、缺失素材和可增加的事项。只输出JSON {reply, tasks:[{title,group,module,kind,executor,description,deliverable,acceptance,estimateMin}]}：reply 用中文写建议或修改后的正文；tasks 是建议补充的事项，没有就给空数组。module 为 home/style/content/drama/autoclip/insights，kind 为 text/script/shoot/images/edit/publish/review，executor 为 ai/me。不执行拍摄、生成素材、剪辑、发布，不声称任务已经完成。', user: JSON.stringify({ message, project, task, inputs }), maxTokens: 6000, signal: AbortSignal.timeout(180000) })
@@ -155,7 +168,6 @@ async function chatTurn(ctx, store, desk, body) {
       draft.chat.push(answer); return { answer, state: draft, actions: [], suggestions: parsed.tasks }
     }, { undoable: false })
   }
-  if (body.pageContext?.module === 'yingce') return yingceChat(ctx, store, body)
   const focusId = typeof body.focusId === 'string' ? body.focusId : undefined
   const state = await store.read()
   const snapshot = JSON.parse(JSON.stringify(state))
@@ -360,6 +372,8 @@ async function route(ctx, store, desk, req, res) {
     return sendFile(req, res, join(store.filesDir, name))
   }
   if (method === 'GET') {
+    if (path === 'profiles') return json(res, 200, await desk.audience.read())
+    if (path === 'trends') return json(res, 200, await desk.trends.read())
     if (path === 'knowledge') return json(res, 200, await desk.knowledge.read())
     if (path === 'state') {
       await desk.workflow.read()
@@ -422,6 +436,10 @@ async function route(ctx, store, desk, req, res) {
 
   if (path === 'upload') return handleUpload(req, store, res)
   const body = await readJson(req)
+  if (path.startsWith('profiles/')) return json(res, 200, await desk.audience.action(path.slice(9), body))
+  if (path === 'trends/collect') return json(res, 200, await desk.trends.collect(true))
+  if (path === 'trends/configure') return json(res, 200, await desk.trends.configure(body))
+  if (path === 'trends/source') return json(res, 200, await desk.trends.source(body))
   if (path.startsWith('knowledge/')) return json(res, 200, await desk.knowledge.action(path.slice(10), body))
   if (path.startsWith('workflow/')) {
     const action = path.slice('workflow/'.length)
@@ -459,8 +477,7 @@ async function route(ctx, store, desk, req, res) {
       return json(res, 200, { state })
     }
     case 'produce': {
-      if (body.spec) await store.mutate('制作规格', state => { const item = state.items.find(row => row.id === body.id); if (!item) throw new Error('内容不存在'); item.productionSpec = productionSpec(body.spec); return state })
-      const started = await desk.producer.start(String(body.id))
+      const started = await desk.producer.start(String(body.id), body.spec)
       return json(res, 200, { started, state: await store.read() })
     }
     case 'produce/cancel':
@@ -583,7 +600,9 @@ export default {
       const response = await fetch('http://127.0.0.1:13001/api/workbench/workflow', { method: 'POST', headers: { 'content-type': 'application/json', 'x-workbench-native': process.env.WORKBENCH_NATIVE_KEY }, body: JSON.stringify(body), signal: AbortSignal.timeout(300000) })
       const result = await response.json(); if (!response.ok) throw new Error(result.error || '本机办理失败'); return result.result
     } : null
-    const desk = { knowledge: new KnowledgeService(store, options => callModel(ctx, options), native ? () => native({ action: 'knowledge-read' }) : null), settings, producer, monid, workflow: new WorkflowService(store, options => callModel(ctx, options), native) }
+    const desk = { audience: new AudienceService(store, options=>callModel(ctx,options)), trends: new TrendService(store), knowledge: new KnowledgeService(store, options => callModel(ctx, options), native ? () => native({ action: 'knowledge-read' }) : null), settings, producer, monid, workflow: new WorkflowService(store, options => callModel(ctx, options), native) }
+    ctx.effect(()=>desk.trends.start())
+    ctx.effect(() => desk.workflow.startQueue())
     // 启动时恢复用户在工作台里选过的助手模型
     settings.read().then(saved => setAssistantModel(saved.assistant)).catch(() => {})
     ctx.effect(() => ctx.webServer.register({

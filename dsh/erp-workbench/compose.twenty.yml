@@ -1,0 +1,71 @@
+# Integration based on Twenty's official self-hosting topology.
+# https://github.com/twentyhq/twenty/tree/main/packages/twenty-docker
+name: dsh-erp-twenty
+x-app-env: &app-env
+  NODE_PORT: 3000
+  PG_DATABASE_URL: postgres://postgres:${PG_DATABASE_PASSWORD:?Run deployment script}@db:5432/default
+  SERVER_URL: http://127.0.0.1:13580
+  REDIS_URL: redis://redis:6379
+  STORAGE_TYPE: local
+  ENCRYPTION_KEY: ${ENCRYPTION_KEY:?Run deployment script}
+  APP_SECRET: ${APP_SECRET:?Run deployment script}
+services:
+  server:
+    image: twentycrm/twenty:${TWENTY_TAG:-v2.38.1}
+    stop_grace_period: 120s
+    ports:
+      - "127.0.0.1:13580:3000"
+    environment: *app-env
+    volumes:
+      - twenty-files:/app/packages/twenty-server/.local-storage
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD-SHELL, "curl --fail http://localhost:3000/healthz"]
+      interval: 10s
+      timeout: 5s
+      start_period: 120s
+      retries: 30
+    restart: unless-stopped
+  worker:
+    image: twentycrm/twenty:${TWENTY_TAG:-v2.38.1}
+    command: [yarn, "worker:prod"]
+    environment:
+      <<: *app-env
+      DISABLE_DB_MIGRATIONS: "true"
+      DISABLE_CRON_JOBS_REGISTRATION: "true"
+    volumes:
+      - twenty-files:/app/packages/twenty-server/.local-storage
+    depends_on:
+      server:
+        condition: service_healthy
+    restart: unless-stopped
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: default
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${PG_DATABASE_PASSWORD}
+    volumes:
+      - twenty-db:/var/lib/postgresql/data
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U postgres -d default"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+  redis:
+    image: redis:7-alpine
+    command: [redis-server, --maxmemory-policy, noeviction]
+    healthcheck:
+      test: [CMD, redis-cli, ping]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+volumes:
+  twenty-db:
+  twenty-files:

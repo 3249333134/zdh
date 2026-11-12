@@ -140,6 +140,7 @@ function productionBrief(production) {
 }
 
 export function chatPrompts(state, message, { focusId, history = [], now = new Date() }) {
+  message += state.profiles ? '\n用户已保存的目标画像与账号设定（目标不代表已验证受众）：'+JSON.stringify({audience:state.profiles.audience,account:state.profiles.account}) : ''
   const focused = focusId ? state.items.find(row => row.id === focusId) : null
   const production = focused?.production?.status === 'done' ? focused.production : null
   const system = `你是 DeepSeek Harness「自媒体工作台」插件里的助手。用户用一句话管理选题、灵感、内容、排期、数据、风格和写作规则。判断用户想做什么，然后把它变成结构化操作。

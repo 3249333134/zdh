@@ -1,52 +1,156 @@
 import React from 'react'
-import { setDesk, report } from './desk.js'
+import { setDesk, report, useDesk, openItem, dispatchOps } from './desk.js'
 import { Dialog } from './ui.jsx'
+import { Calendar, CalendarDay, ScheduleRail, ITEM_DRAG, TASK_DRAG, canMove, intersects, scheduleTime, startDrag } from './schedule.jsx'
+import { dayKey, displayItem, fmtTime } from './util.js'
 import { useWorkflow, workflowRequest, handleTask, TaskFilters, filterTasks, STATUS_LABELS, MODULE_LABELS, localTime, fmtTaskTime, SchedulePreview, groupRollup, GroupSummary } from './workflow.jsx'
 
-const dayKey = value => { const date = new Date(value); return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}` }
 const startDay = date => { const result = new Date(date); result.setHours(0, 0, 0, 0); return result }
 const plusDays = (date, count) => { const next = new Date(date); next.setDate(next.getDate() + count); return next }
-function intersects(task, date) {
-  const start = Date.parse(task.startAt || task.dueAt || ''), end = Date.parse(task.endAt || task.startAt || task.dueAt || '')
-  return Number.isFinite(start) && start < +plusDays(startDay(date), 1) && end >= +startDay(date) && !(end === +startDay(date) && start !== end)
-}
+
 export function TaskScheduler() {
-  const workflow = useWorkflow(), [filter, setFilter] = React.useState({}), [view, setView] = React.useState('month'), [cursor, setCursor] = React.useState(startDay(new Date()))
-  const [preview, setPreview] = React.useState(null), [editing, setEditing] = React.useState(null), [batch, setBatch] = React.useState(false), [selected, setSelected] = React.useState([]), [suggest, setSuggest] = React.useState(false), [busy, setBusy] = React.useState(false)
+  const workflow = useWorkflow()
+  const items = useDesk(s => s.state.items)
+  const projectId = useDesk(s => s.scheduleProjectId)
+  const focusDate = useDesk(s => s.scheduleFocusDate)
+  const [filter, setFilter] = React.useState({})
+  const [view, setView] = React.useState('month')
+  const [cursor, setCursor] = React.useState(() => startDay(new Date()))
+  const [preview, setPreview] = React.useState(null)
+  const [editing, setEditing] = React.useState(null)
+  const [batch, setBatch] = React.useState(false)
+  const [selected, setSelected] = React.useState([])
+  const [suggest, setSuggest] = React.useState(false)
+  const [busy, setBusy] = React.useState(false)
+  const [dayDetail, setDayDetail] = React.useState(null)
   const scrollRef = React.useRef(null)
+  React.useEffect(() => {
+    if (!projectId) return
+    setFilter({ projectId })
+    if (focusDate) setCursor(startDay(new Date(focusDate)))
+    setDesk({ scheduleProjectId: null, scheduleFocusDate: null })
+  }, [projectId, focusDate])
   React.useEffect(() => { if (view !== 'month' && scrollRef.current) scrollRef.current.scrollTop = 8 * 42 }, [view, cursor])
   const move = direction => setCursor(view === 'month' ? new Date(cursor.getFullYear(), cursor.getMonth() + direction, 1) : plusDays(cursor, direction * (view === 'week' ? 7 : 1)))
-  const tasks = filterTasks(workflow.tasks, filter).filter(task => filter.status === 'cancelled' || task.status !== 'cancelled')
-  const pending = tasks.filter(task => !task.startAt && !task.dueAt)
-  const groups = groupRollup(filter === undefined ? tasks : filterTasks(workflow.tasks, { projectId: filter.projectId }))
-  const requestPreview = async changes => { try { const result = await workflowRequest('schedule-preview', { changes }); setPreview(result.preview) } catch (error) { report(error) } }
+  const onToday = () => setCursor(startDay(new Date()))
+
+  const linked = new Set(workflow.tasks.filter(row => row.kind === 'publish' && row.status !== 'cancelled' && !row.supersededBy && scheduleTime(row)).map(row => row.links?.itemId))
+  const content = items.filter(item => !linked.has(item.id)).map(item => ({
+    id: 'content:' + item.id,
+    title: displayItem(item).title,
+    startAt: item.scheduledAt || item.publishedAt,
+    module: 'content',
+    kind: 'publish',
+    executor: 'me',
+    status: item.status === 'published' ? 'done' : 'todo',
+    sourceItem: item,
+  }))
+  const tasks = filterTasks([...workflow.tasks, ...content], filter).filter(row => filter.status === 'cancelled' || row.status !== 'cancelled')
+  const rows = tasks.filter(scheduleTime).sort((a, b) => Date.parse(scheduleTime(a)) - Date.parse(scheduleTime(b)))
+  const pending = tasks.filter(row => !scheduleTime(row))
+  const groups = groupRollup(filterTasks(workflow.tasks, { projectId: filter.projectId }))
+  const selectedTasks = tasks.filter(row => selected.includes(row.id) && !row.sourceItem && canMove(row))
+  const pendingTasks = pending.filter(row => !row.sourceItem && canMove(row))
+  const onSelect = (id, checked) => setSelected(ids => checked ? [...ids, id] : ids.filter(value => value !== id))
+  const onOpen = row => row.sourceItem ? openItem(row.sourceItem.id) : setEditing(row)
+  const requestPreview = async changes => {
+    try { setPreview((await workflowRequest('schedule-preview', { changes })).preview) } catch (error) { report(error) }
+  }
+  const updateItemTime = (item, date, hour) => {
+    if (!item || item.status === 'published') return
+    const start = date ? new Date(date) : null
+    const old = item.scheduledAt ? new Date(item.scheduledAt) : null
+    start?.setHours(hour ?? old?.getHours() ?? 20, old?.getMinutes() ?? 0, 0, 0)
+    dispatchOps([{ op: 'schedule_item', id: item.id, scheduledAt: start?.toISOString() ?? null }], { label: start ? '修改排期' : '取消排期' })
+  }
   const drop = (event, date, hour) => {
-    event.preventDefault(); const id = event.dataTransfer.getData('text/workbench-task'), task = workflow.tasks.find(task => task.id === id)
-    if (!task) return
-    const start = new Date(date), old = task.startAt ? new Date(task.startAt) : null
+    event.preventDefault()
+    const itemId = event.dataTransfer.getData(ITEM_DRAG)
+    if (itemId) {
+      updateItemTime(content.find(row => row.sourceItem.id === itemId)?.sourceItem, date, hour)
+      return
+    }
+    const id = event.dataTransfer.getData(TASK_DRAG)
+    const task = tasks.find(row => row.id === id)
+    if (!task || !canMove(task)) return
+    const start = new Date(date)
+    const old = scheduleTime(task) ? new Date(scheduleTime(task)) : null
     start.setHours(hour ?? old?.getHours() ?? 9, old?.getMinutes() ?? 0, 0, 0)
     const duration = task.endAt && task.startAt ? Date.parse(task.endAt) - Date.parse(task.startAt) : task.estimateMin * 60000
-    const delta = old ? +start - +old : 0
-    requestPreview([{ id, startAt: start.toISOString(), endAt: new Date(+start + duration).toISOString(), ...(task.dueAt && old ? { dueAt: new Date(Date.parse(task.dueAt) + delta).toISOString() } : {}) }])
+    const dueAt = task.dueAt && old ? new Date(Date.parse(task.dueAt) + (+start - +old)).toISOString() : null
+    if (task.dueAt && !task.startAt) {
+      requestPreview([{ id, dueAt }])
+    } else {
+      requestPreview([{ id, startAt: start.toISOString(), endAt: new Date(+start + duration).toISOString(), ...(dueAt ? { dueAt } : {}) }])
+    }
   }
-  const chip = (task, date, timed = false) => {
-    const dayStart = +startDay(date), start = Math.max(dayStart, Date.parse(task.startAt || task.dueAt)), end = Math.min(+plusDays(date, 1), Date.parse(task.endAt || task.startAt || task.dueAt) + (task.endAt ? 0 : 20 * 60000))
-    return <button type="button" key={task.id} draggable={!task.locked && !['done', 'running'].includes(task.status)} onDragStart={event => event.dataTransfer.setData('text/workbench-task', task.id)} className={`md-agenda-chip state-${task.status} ${task.kind === 'publish' ? 'is-publication' : ''}`} style={timed ? { top: (start - dayStart) / 60000 * .7, minHeight: 27, height: Math.max(27, (end - start) / 60000 * .7) } : undefined} onClick={() => setEditing(task)} title={`${task.title} · ${MODULE_LABELS[task.module]} · ${fmtTaskTime(task.startAt)} → ${fmtTaskTime(task.endAt)}`}><small>{task.locked ? '🔒 ' : ''}{task.kind === 'publish' ? '发布 · ' : ''}{task.startAt ? new Date(task.startAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }) : '截止'}{task.timeSource === 'estimate' ? ' · 预计' : ''} · {task.executor === 'ai' ? 'AI' : '我'}</small><strong>{task.title}</strong><small>{STATUS_LABELS[task.status]} · {MODULE_LABELS[task.module]}</small></button>
+  const estimate = async () => {
+    setBusy(true)
+    try { await workflowRequest('estimate-unscheduled', { projectId: filter.projectId }) } catch (error) { report(error) } finally { setBusy(false) }
   }
-  const firstMonth = new Date(cursor.getFullYear(), cursor.getMonth(), 1), monthStart = plusDays(firstMonth, -((firstMonth.getDay() + 6) % 7))
-  const days = view === 'month' ? Array.from({ length: 42 }, (_, index) => plusDays(monthStart, index)) : view === 'day' ? [cursor] : Array.from({ length: 7 }, (_, index) => plusDays(cursor, index - (cursor.getDay() + 6) % 7))
-  return <div className="md-page md-agenda-page"><header className="md-page-head"><div><h1>统一排期</h1><p className="md-page-sub">{tasks.length} 项具体事项 · {pending.length} 项待安排 · {groups.length} 个工作包 · 到点只提醒，不自动生成或发布</p></div><button className="md-btn" onClick={() => setDesk({ view: 'content', focusId: null })}>任务工作台</button></header>
-    <TaskFilters value={filter} onChange={setFilter} workflow={workflow} />
-    <details className="md-work-package-summary"><summary>工作包进度 · {groups.length} 组</summary><GroupSummary groups={groups} /></details>
-    <div className="md-agenda-toolbar"><button className="md-btn" onClick={() => move(-1)}>上一页</button><button className="md-btn" onClick={() => setCursor(startDay(new Date()))}>今天</button><input type="date" aria-label="查看日期" value={dayKey(cursor)} onChange={event => { if (event.target.value) setCursor(new Date(event.target.value + 'T00:00:00')) }} /><button className="md-btn" onClick={() => move(1)}>下一页</button><div className="md-agenda-view-switch">{[['month', '月'], ['week', '周'], ['day', '日']].map(([id, label]) => <button className={view === id ? 'is-on' : ''} onClick={() => setView(id)} key={id}>{label}</button>)}</div><button className="md-btn" disabled={!selected.length} onClick={() => setBatch(true)}>批量安排（{selected.length}）</button><button className="md-btn" disabled={!tasks.length} onClick={() => setSuggest(true)}>按可用时间建议排期</button></div>
-    <div className="md-agenda-layout"><section className={'md-agenda-calendar view-' + view} aria-label="事项日历">
-    {view === 'month' ? <div className="md-agenda-month">{days.map(date => { const rows = tasks.filter(task => intersects(task, date)); return <div key={dayKey(date)} className={'md-agenda-date ' + (date.getMonth() === cursor.getMonth() ? '' : 'is-other')} onDragOver={event => event.preventDefault()} onDrop={event => drop(event, date)}><header>{date.getMonth() + 1}/{date.getDate()} 周{'日一二三四五六'[date.getDay()]}</header>{rows.slice(0, 4).map(task => chip(task, date))}{rows.length > 4 ? <span className="md-agenda-more">还有 {rows.length - 4} 项，切到周视图查看</span> : null}</div> })}</div> : <><div className="md-agenda-day-labels" style={{ gridTemplateColumns: `44px repeat(${days.length}, minmax(90px,1fr))` }}><span />{days.map(date => <strong key={dayKey(date)}>{date.getMonth() + 1}/{date.getDate()} 周{'日一二三四五六'[date.getDay()]}</strong>)}</div><div className="md-agenda-time-scroll" ref={scrollRef}><div className="md-agenda-time-grid" style={{ gridTemplateColumns: `44px repeat(${days.length}, minmax(90px,1fr))` }}><div className="md-agenda-hour-labels">{Array.from({ length: 24 }, (_, hour) => <span key={hour} style={{ top: hour * 42 }}>{String(hour).padStart(2, '0')}:00</span>)}</div>{days.map(date => <div className="md-agenda-day" key={dayKey(date)} onDragOver={event => event.preventDefault()} onDrop={event => { const rect = event.currentTarget.getBoundingClientRect(); drop(event, date, Math.max(0, Math.min(23, Math.floor((event.clientY - rect.top) / 42)))) }}>{Array.from({ length: 24 }, (_, hour) => <i key={hour} style={{ top: hour * 42 }} />)}{tasks.filter(task => intersects(task, date)).map(task => chip(task, date, true))}</div>)}</div></div></>}
-    </section><aside className="md-agenda-tray"><h3>待安排（{pending.length}）</h3><p className="md-muted">新计划自动填入预计时间，均可调整。已有待安排事项可补齐预计时间；到点只提醒。</p><button className="md-btn" disabled={!pending.length} onClick={async () => { try { await workflowRequest('estimate-unscheduled', { projectId: filter.projectId }) } catch (error) { report(error) } }}>补齐预计时间</button>{pending.map(task => <div className="md-agenda-tray-row" key={task.id}><input type="checkbox" aria-label={'选择排期' + task.title} checked={selected.includes(task.id)} onChange={event => setSelected(event.target.checked ? [...selected, task.id] : selected.filter(id => id !== task.id))} /><button draggable onDragStart={event => event.dataTransfer.setData('text/workbench-task', task.id)} onClick={() => setEditing(task)}><strong>{task.title}</strong><small>{task.estimateMin} 分钟 · {MODULE_LABELS[task.module]} · {task.executor === 'ai' ? 'AI' : '我'}{task.locked ? ' · 已锁定' : ''}</small></button></div>)}<details className="md-agenda-all"><summary>已安排事项（{tasks.length - pending.length}）</summary>{tasks.filter(task => task.startAt || task.dueAt).map(task => <div className="md-agenda-tray-row" key={task.id}><input type="checkbox" aria-label={'选择排期' + task.title} checked={selected.includes(task.id)} onChange={event => setSelected(event.target.checked ? [...selected, task.id] : selected.filter(id => id !== task.id))} /><button onClick={() => setEditing(task)}><strong>{task.title}</strong><small>{fmtTaskTime(task.startAt)} · {MODULE_LABELS[task.module]}</small></button></div>)}</details></aside></div>
-    {editing ? <TimeEditor task={editing} onClose={() => setEditing(null)} onPreview={async changes => { setEditing(null); await requestPreview(changes) }} /> : null}
-    {batch ? <BatchTime tasks={tasks.filter(task => selected.includes(task.id))} onClose={() => setBatch(false)} onPreview={async changes => { setBatch(false); await requestPreview(changes) }} /> : null}
-    {suggest ? <Availability onClose={() => setSuggest(false)} onPreview={async windows => { try { const result = await workflowRequest('suggest-schedule', { ids: selected.length ? selected : pending.map(task => task.id), windows }); setSuggest(false); setPreview(result.preview) } catch (error) { report(error) } }} /> : null}
-    {preview ? <Dialog title="核对排期变更" width={760} onClose={() => setPreview(null)}><SchedulePreview preview={preview} busy={busy} onCancel={() => setPreview(null)} onApply={async () => { setBusy(true); try { await workflowRequest('schedule-apply', { preview }); setPreview(null) } catch (error) { report(error) } finally { setBusy(false) } }} /></Dialog> : null}
+  const timeDays = view === 'day' ? [cursor] : Array.from({ length: 7 }, (_, index) => plusDays(cursor, index - (cursor.getDay() + 6) % 7))
+  const timeColumns = { gridTemplateColumns: '44px repeat(' + timeDays.length + ', minmax(90px,1fr))' }
+
+  return <>
+  <div className="md-page md-schedule-page">
+    <div className="md-agenda-toolbar md-unified-toolbar">
+      <div className="md-agenda-view-switch" aria-label="排期视图">{[['month', '月'], ['week', '周'], ['day', '日']].map(([id, label]) => <button type="button" aria-pressed={view === id} className={view === id ? 'is-on' : ''} onClick={() => setView(id)} key={id}>{label}</button>)}</div>
+      {view !== 'month' ? <><button className="md-btn" onClick={() => move(-1)}>上一页</button><button className="md-btn" onClick={onToday}>今天</button><button className="md-btn" onClick={() => move(1)}>下一页</button></> : null}
+      <input type="date" aria-label="查看日期" value={dayKey(cursor)} onChange={event => { if (event.target.value) setCursor(new Date(event.target.value + 'T00:00:00')) }} />
+      <button className="md-btn" disabled={!selectedTasks.length} onClick={() => setBatch(true)}>批量安排{selectedTasks.length ? '（' + selectedTasks.length + '）' : ''}</button>
+      <button className="md-btn" disabled={!selectedTasks.length && !pendingTasks.length} onClick={() => setSuggest(true)}>建议排期</button>
+      <span className="md-grow" />
+      <button className="md-btn" onClick={() => setDesk({ view: 'content', focusId: null, workflowProjectFocusId: filter.projectId || null })}>任务工作台</button>
+    </div>
+    <details className="md-unified-filters"><summary>筛选与工作包{Object.values(filter).some(Boolean) ? ' · 筛选中' : ''}</summary>
+      <TaskFilters value={filter} onChange={setFilter} workflow={workflow} />
+      {groups.length ? <GroupSummary groups={groups} /> : null}
+    </details>
+    <div className="md-schedule md-unified-schedule">
+      {view === 'month' ? <Calendar items={items} rows={rows} cursor={cursor} today={dayKey(new Date())} move={move} onToday={onToday} onOpen={onOpen} onDrop={drop} onDayOpen={setDayDetail} /> :
+        <section className={'md-agenda-calendar view-' + view} aria-label="事项时间表">
+          <div className="md-agenda-day-labels" style={timeColumns}><span />{timeDays.map(date => <strong key={dayKey(date)}>{date.getMonth() + 1}/{date.getDate()} 周{'日一二三四五六'[date.getDay()]}</strong>)}</div>
+          <div className="md-agenda-time-scroll" ref={scrollRef}>
+            <div className="md-agenda-time-grid" style={timeColumns}>
+              <div className="md-agenda-hour-labels">{Array.from({ length: 24 }, (_, hour) => <span key={hour} style={{ top: hour * 42 }}>{String(hour).padStart(2, '0')}:00</span>)}</div>
+              {timeDays.map(date => <div className="md-agenda-day" key={dayKey(date)} onDragOver={event => { if (event.dataTransfer.types.some(type => type === ITEM_DRAG || type === TASK_DRAG)) event.preventDefault() }} onDrop={event => {
+                const rect = event.currentTarget.getBoundingClientRect()
+                drop(event, date, Math.max(0, Math.min(23, Math.floor((event.clientY - rect.top) / 42))))
+              }}>
+                {Array.from({ length: 24 }, (_, hour) => <i key={hour} style={{ top: hour * 42 }} />)}
+                {rows.filter(row => intersects(row, date)).map(row => {
+                  const dayStart = +startDay(date)
+                  const start = Math.max(dayStart, Date.parse(scheduleTime(row)))
+                  const end = Math.min(+plusDays(date, 1), Date.parse(row.endAt || scheduleTime(row)))
+                  return <button type="button" key={row.id} draggable={canMove(row)} onDragStart={event => startDrag(event, row)} onClick={() => onOpen(row)}
+                    className={'md-agenda-chip state-' + row.status + (row.kind === 'publish' ? ' is-publication' : '')}
+                    style={{ top: (start - dayStart) / 60000 * .7, height: Math.max(36, (end - start) / 60000 * .7) }} title={row.title}>
+                    <small>{row.kind === 'publish' ? '发布 · ' : ''}{row.dueAt && !row.startAt ? '截止 ' : ''}{fmtTime(scheduleTime(row))}{row.timeSource === 'estimate' ? ' · 预计' : ''}</small><strong>{row.title}</strong>
+                  </button>
+                })}
+              </div>)}
+            </div>
+          </div>
+        </section>}
+      <ScheduleRail rows={rows} pending={pending} selected={selected} onSelect={onSelect} onOpen={onOpen} onEstimate={estimate} canEstimate={!busy && pendingTasks.length > 0} onUnschedule={id => updateItemTime(items.find(item => item.id === id && item.scheduledAt && !linked.has(id)), null)} />
+    </div>
   </div>
+    {dayDetail ? <CalendarDay detail={dayDetail} rows={rows} onClose={() => setDayDetail(null)} onOpen={onOpen} /> : null}
+    {editing ? <TimeEditor task={editing} onClose={() => setEditing(null)} onPreview={async changes => { setEditing(null); await requestPreview(changes) }} /> : null}
+    {batch ? <BatchTime tasks={selectedTasks} onClose={() => setBatch(false)} onPreview={async changes => { setBatch(false); await requestPreview(changes) }} /> : null}
+    {suggest ? <Availability onClose={() => setSuggest(false)} onPreview={async windows => {
+      try {
+        const ids = (selectedTasks.length ? selectedTasks : pendingTasks).map(task => task.id)
+        const result = await workflowRequest('suggest-schedule', { ids, windows })
+        setSuggest(false)
+        setPreview(result.preview)
+      } catch (error) { report(error) }
+    }} /> : null}
+    {preview ? <Dialog title="核对排期变更" width={760} onClose={() => setPreview(null)}><SchedulePreview preview={preview} busy={busy} onCancel={() => setPreview(null)} onApply={async () => {
+      setBusy(true)
+      try { await workflowRequest('schedule-apply', { preview }); setPreview(null) } catch (error) { report(error) } finally { setBusy(false) }
+    }} /></Dialog> : null}
+  </>
 }
 function TimeEditor({ task, onClose, onPreview }) {
   const [times, setTimes] = React.useState({ startAt: localTime(task.startAt), endAt: localTime(task.endAt), dueAt: localTime(task.dueAt) })

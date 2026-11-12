@@ -33,6 +33,26 @@ function hostOf(url) {
   }
 }
 
+export function HotBadge({ item }) {
+  return item.trend ? <span className="md-hot-badge">热点</span> : null
+}
+
+export function OriginalLink({ item }) {
+  let url
+  for (const value of [item.url, item.source]) {
+    try {
+      const candidate = new URL(value)
+      if (['https:', 'http:'].includes(candidate.protocol) && !candidate.username && !candidate.password) {
+        url = candidate.href
+        break
+      }
+    } catch {}
+  }
+  if (!url) return null
+  const label = item.trend?.kind === '热榜话题' ? '查看原话题' : '查看原文'
+  return <a className="md-original-link" href={url} target="_blank" rel="noopener noreferrer" draggable={false} onClick={event => event.stopPropagation()} title={hostOf(url)}>{label}<Icon name="upRight" size={13} /></a>
+}
+
 export function Card({ item: raw, onOpen }) {
   const item = displayItem(raw)
   const inverted = item.pinned
@@ -52,6 +72,7 @@ export function Card({ item: raw, onOpen }) {
       onPointerLeave={() => setHover(false)}
       onClick={event => onOpen?.(raw, event)}
       onKeyDown={(event) => {
+        if (event.target !== event.currentTarget) return
         if (event.key === 'Enter' || event.key === ' ') {
           event.preventDefault()
           onOpen?.(raw, event)
@@ -80,7 +101,9 @@ export function Card({ item: raw, onOpen }) {
       <footer className="md-card-foot">
         <span className={`md-dot status-${item.status}`} title={t(STATUS_LABEL[item.status])} />
         <span className="md-card-source">{item.kind === 'web' && item.url ? hostOf(item.url) : item.source || t(KIND_LABEL[item.kind])}</span>
+        <HotBadge item={raw} />
         <span className="md-card-time">{running ? <span className="md-shimmer">{t('正在成稿')}</span> : item.production?.status === 'done' ? t('已成稿') : item.scheduledAt && item.status !== 'published' ? relativeDay(item.scheduledAt) : ''}</span>
+        <OriginalLink item={raw} />
       </footer>
     </article>
   )

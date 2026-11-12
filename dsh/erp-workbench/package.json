@@ -1,0 +1,13 @@
+{
+  "name": "dsh-erp-workbench",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "main": "src/host.js",
+  "exports": {".": "./src/host.js", "./client": "./dist/client.js", "./cordis.patch.yml": "./cordis.patch.yml", "./package.json": "./package.json"},
+  "dsh": {"bundle": {"patch": "./cordis.patch.yml"}, "client": {"platform": "web", "inject": ["@deepseek-ai/dsh-client-runtime"]}},
+  "scripts": {"build": "node scripts/build.mjs", "test": "node --test test/*.test.mjs", "start": "powershell -ExecutionPolicy Bypass -File start.ps1"},
+  "devDependencies": {"esbuild": "^0.25.10"},
+  "files": ["src", "client", "dist", "cordis.patch.yml", "README.md"],
+  "engines": {"node": ">=24.9.0", "dsh": ">=0.2.1-rc.3 <0.3.0"}
+}

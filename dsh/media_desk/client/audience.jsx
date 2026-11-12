@@ -1,0 +1,18 @@
+import React from 'react'
+import {useDesk,loadDesk,report} from './desk.js'
+const sections={audience:[['name','目标受众名称'],['positioning','目标受众与定位'],['interests','关注主题／兴趣'],['needs','希望获得什么'],['painPoints','主要问题与痛点'],['scenarios','观看与使用场景'],['language','偏好的语言与表达'],['evidence','已知依据（用户反馈或实际数据）'],['unknowns','尚未验证的信息']],account:[['name','账号／创作者名称'],['positioning','账号定位'],['value','向用户提供的价值'],['formats','内容形式与平台'],['cadence','计划更新频率'],['goals','阶段目标'],['strengths','个人优势与资源'],['constraints','时间、拍摄和制作限制'],['notes','其他要求']]}
+export async function insightRequest(path,body){const r=await fetch('media-desk/'+path,body?{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)}:{});const j=await r.json();if(!r.ok)throw new Error(j.error||'请求失败');return j}
+export function AudiencePanel({section}){
+ const [data,setData]=React.useState(null),[form,setForm]=React.useState({}),[owned,setOwned]=React.useState([]),[busy,setBusy]=React.useState(false),[dirty,setDirty]=React.useState(false)
+ const accounts=useDesk(s=>s.state.accounts||[])
+ const apply=d=>{setData(d);setForm(d[section]||{});setOwned(d.ownAccountIds||[]);setDirty(false)}
+ React.useEffect(()=>{let alive=true;insightRequest('profiles').then(d=>{if(alive)apply(d)}).catch(report);return()=>{alive=false}},[section])
+ const act=async(action,body={})=>{setBusy(true);try{const result=await insightRequest('profiles/'+action,{revision:data.revision,...body});apply(result);await loadDesk()}catch(e){report(e)}finally{setBusy(false)}}
+ if(!data)return <p className="md-muted">正在读取画像…</p>
+ return <div className="md-profile-panel"><header className="md-page-head"><div><h1>{section==='audience'?'受众用户画像':'个人账号画像'}</h1><p className="md-page-sub">{section==='audience'?'区分目标设定、真实反馈和待验证假设，不凭空推断用户年龄、性别或收入。':'明确你自己的账号、定位、内容优势与目标；导入过的竞品不会自动认作你的账号。'}</p></div><button className="md-btn" disabled={busy||dirty} onClick={()=>act('analyze')}>{busy?'处理中…':'AI 根据真实数据提出建议'}</button></header>
+ <div className="md-profile-fields">{sections[section].map(([key,label])=><label className="md-field" key={key}><span>{label}</span><textarea rows={key==='name'?1:3} value={form[key]||''} placeholder={key==='evidence'?'填写可核实的反馈或数据来源；未知的信息留空':'可手动填写，尚未确定可以留空'} onChange={e=>{setForm({...form,[key]:e.target.value});setDirty(true)}}/></label>)}</div>
+ {section==='account'?<fieldset className="md-task-times"><legend>哪些导入账号属于你自己？</legend>{accounts.filter(a=>!a.sample).map(a=><label key={a.id}><input type="checkbox" checked={owned.includes(a.id)} onChange={e=>{setOwned(e.target.checked?[...owned,a.id]:owned.filter(id=>id!==a.id));setDirty(true)}}/>{a.name||a.handle||'未命名账号'} · {a.platform}</label>)}{!accounts.some(a=>!a.sample)?<p className="md-muted">还没有导入真实账号，可先在“数据复盘”导入账号数据，也可先填写自己的定位。</p>:null}</fieldset>:null}
+ <div className="md-task-actions"><button className="md-btn is-primary" disabled={busy} onClick={()=>act('save',{[section]:form,ownAccountIds:owned})}>保存画像</button><span className="md-muted">{dirty?'请先保存，再生成 AI 建议。':data.updatedAt?'已保存 · '+new Date(data.updatedAt).toLocaleString('zh-CN'):'画像保存在本机，与全局助手和任务拆解共用。'}</span></div>
+ {data.draft?<section className="md-task-artifact"><h3>待核对的 AI 画像建议</h3><p>{data.draft.summary}</p><div className="md-profile-fields">{Object.entries(data.draft[section]||{}).filter(([,v])=>v).map(([key,value])=><div key={key}><strong>{sections[section].find(([id])=>id===key)?.[1]||key}</strong><p>{value}</p></div>)}</div><p>待核实：{data.draft.unknowns||'请结合实际反馈核对'}</p><small>可核对依据 {data.draft.evidenceIds.length} 条；AI 建议不会自动替换已保存画像。</small><button className="md-btn" disabled={busy||dirty||data.draft.baseRevision!==data.revision} onClick={()=>act('accept',{draftId:data.draft.id})}>采纳这版受众与账号画像</button></section>:null}
+ </div>
+}

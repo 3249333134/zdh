@@ -174,6 +174,8 @@ function ContentLibrary() {
 }
 export function ContentView() {
   const [tab, setTab] = React.useState('workflow')
+  const incomingPlan = useDesk(s => s.workflowProposalId || s.workflowProjectFocusId)
+  React.useEffect(()=>{if(incomingPlan)setTab('workflow')},[incomingPlan])
   // 任务工作台和内容看板共用同一个页面容器：页签在流里，内容按需切换，避免两套绝对定位互相覆盖
   return <div className="md-page md-content-page"><div className="md-content-tabs"><button className={tab === 'workflow' ? 'is-on' : ''} onClick={() => setTab('workflow')}>任务工作台</button><button className={tab === 'library' ? 'is-on' : ''} onClick={() => setTab('library')}>内容看板</button></div>{tab === 'workflow' ? <WorkflowBoard /> : <ContentLibrary />}</div>
 }

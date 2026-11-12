@@ -1,3 +1,5 @@
+import { AudiencePanel } from './audience.jsx'
+import { TrendPanel } from './trends.jsx'
 // 数据复盘。
 import React from 'react'
 import { dispatchOps, fetchInsights, learnSkills, openItem, setDesk, toast, useDesk } from './desk.js'
@@ -145,7 +147,7 @@ function Metric({ label, value, unit, wide }) {
   return <div className={`md-metric ${wide ? 'is-wide' : ''}`}><dt>{label}</dt><dd>{value}{unit ? <small>{unit}</small> : null}</dd></div>
 }
 
-export function InsightsView() {
+function InsightsData() {
   useLang()
   const items = useDesk(s => s.state.items)
   const metrics = useDesk(s => s.state.metrics)
@@ -280,3 +282,5 @@ export function InsightsView() {
     </div>
   )
 }
+
+export function InsightsView(){const [tab,setTab]=React.useState('audience');return <div className="md-page md-insights-shell"><div className="md-content-tabs">{[['audience','受众用户画像'],['account','个人账号画像'],['data','数据复盘'],['trends','每日热点设置']].map(([id,name])=><button key={id} className={tab===id?'is-on':''} onClick={()=>setTab(id)}>{name}</button>)}</div>{tab==='data'?<InsightsData/>:tab==='trends'?<TrendPanel/>:<AudiencePanel key={tab} section={tab}/>}</div>}

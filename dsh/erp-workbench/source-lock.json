@@ -1,0 +1,7 @@
+{
+  "repository": "https://github.com/usekaneo/kaneo",
+  "commit": "b832ab6ab2feac06e3e2a1bca91a468f11418fc5",
+  "license": "MIT",
+  "localSource": "upstream/kaneo",
+  "deploymentImage": "ghcr.io/usekaneo/kaneo:2.49.0"
+}

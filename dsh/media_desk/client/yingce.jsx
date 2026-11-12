@@ -6,6 +6,8 @@ import { observeYingce } from './yingce-agent.js'
 
 export function YingceView() {
   const language = useLang()
+  const input = useDesk(s => s.yingceTaskInput)
+  const taskQuery = input ? '?' + new URLSearchParams({ workbenchTask: input.id, mode: input.mode, prompt: input.prompt }).toString() : ''
   const configuredUrl = useDesk(s => s.settings?.yingce?.webUrl)
   const [attempt, retry] = React.useReducer(value => value + 1, 0)
   const [status, setStatus] = React.useState({ loading: true, error: '' })
@@ -48,5 +50,5 @@ export function YingceView() {
       {status.error ? <button type="button" className="md-btn" onClick={retry}>{t('重试')}</button> : null}
     </section>
   )
-  return <iframe ref={frame} onLoad={() => syncCanvasPreferences(frame.current)} key={`${origin}-${attempt}`} className="md-yc-frame" src={`${origin}/create`} title={t('影策完整工作台')} allow="clipboard-read; clipboard-write; microphone; camera; fullscreen" allowFullScreen />
+  return <iframe ref={frame} onLoad={() => syncCanvasPreferences(frame.current)} key={`${origin}-${attempt}-${input?.id || "home"}`} className="md-yc-frame" src={`${origin}/create${taskQuery}`} title={t('影策完整工作台')} allow="clipboard-read; clipboard-write; microphone; camera; fullscreen" allowFullScreen />
 }

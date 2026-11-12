@@ -1,0 +1,36 @@
+name: dsh-erp-workbench
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: kaneo
+      POSTGRES_DB: kaneo
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Run deployment script first}
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: [CMD-SHELL, pg_isready -U kaneo -d kaneo]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+  kaneo:
+    image: ghcr.io/usekaneo/kaneo:${KANEO_IMAGE_TAG:?Run deployment script first}
+    ports:
+      - "127.0.0.1:13570:5173"
+    environment:
+      KANEO_CLIENT_URL: http://127.0.0.1:13570
+      POSTGRES_USER: kaneo
+      POSTGRES_DB: kaneo
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      AUTH_SECRET: ${AUTH_SECRET}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: [CMD, wget, -Y, "off", --no-verbose, --tries=1, --spider, "http://127.0.0.1:5173/api/health"]
+      interval: 10s
+      timeout: 5s
+      start_period: 60s
+      retries: 12

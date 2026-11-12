@@ -1,0 +1,5 @@
+data/
+upstream/
+dist/
+*.tgz
+.env

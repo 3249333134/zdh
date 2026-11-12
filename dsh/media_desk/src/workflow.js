@@ -1,3 +1,4 @@
+import { itemProposal, collectItemPlans, confirmedItemPlan } from './item-plan.js'
 import { randomUUID } from 'node:crypto'
 import { productionSpec, normalizeShotSources, SHOT_SOURCES } from './production-spec.js'
 
@@ -8,16 +9,21 @@ export const NATIVE_ACTIONS = ['import-files', 'yingce', 'yingce-canvas', 'clip-
 const fail = (message, status = 400) => { throw Object.assign(new Error(message), { status }) }
 const str = (value, max = 10000) => typeof value === 'string' ? value.trim().slice(0, max) : ''
 const stamp = value => { if (!value) return null; const date = new Date(value); if (!Number.isFinite(+date)) fail('时间格式不正确'); return date.toISOString() }
+const generationMode = task => task.executor !== 'ai' ? null :
+  task.kind === 'images' ? 'image' : task.kind === 'video' ? 'video' :
+  ['text', 'script', 'review'].includes(task.kind) ? 'text' : null
 export const emptyWorkflow = () => ({ revision: 0, projects: [], tasks: [], proposals: [], receipts: [] })
 export function workflowOf(state) { return state.workflow || emptyWorkflow() }
 export function normalizeTasks(input, projectId) {
-  if (!Array.isArray(input) || !input.length || input.length > 150) fail('每份计划需要 1–150 个具体事项')
+  if (!Array.isArray(input) || !input.length || input.length > 300) fail('每份计划需要 1–300 个具体事项')
   const tasks = input.map((row, index) => ({
     id: str(row.id, 100) || `task-${index + 1}`, projectId, title: str(row.title, 200), group: str(row.group, 100) || '工作事项', video: str(row.video, 100),
-    module: row.module in MODULES ? row.module : 'content', executor: row.executor === 'ai' ? 'ai' : 'me', kind: ['text', 'script', 'shoot', 'images', 'edit', 'publish', 'review'].includes(row.kind) ? row.kind : 'text',
+    module: ['ai-image','ai-video'].includes(row.executionMode) ? 'drama' : row.executionMode === 'ai-edit' ? 'autoclip' : row.module in MODULES ? row.module : 'content', executor: row.executionMode && row.executionMode !== 'me' ? 'ai' : row.executor === 'ai' ? 'ai' : 'me', kind: row.executionMode === 'ai-image' ? 'images' : row.executionMode === 'ai-video' ? 'video' : row.executionMode === 'ai-edit' ? 'edit' : ['text', 'script', 'shoot', 'images', 'video', 'edit', 'publish', 'review'].includes(row.kind) ? row.kind : 'text',
     description: str(row.description), deliverable: str(row.deliverable), acceptance: str(row.acceptance), estimateMin: Math.max(5, Math.min(1440, Number(row.estimateMin) || 30)),
     dependencies: [...new Set(Array.isArray(row.dependencies) ? row.dependencies.map(id => str(id, 100)) : [])],
     startAt: stamp(row.startAt), endAt: stamp(row.endAt), dueAt: stamp(row.dueAt), locked: row.locked === true,
+    executionMode: ['me','ai-text','ai-image','ai-video','ai-edit'].includes(row.executionMode) ? row.executionMode :
+      row.executor !== 'ai' ? 'me' : row.kind === 'images' ? 'ai-image' : row.kind === 'video' ? 'ai-video' : row.kind === 'edit' ? 'ai-edit' : 'ai-text',
     spec: productionSpec(row.spec), status: 'todo', version: 1, artifacts: [], history: [], links: {},
   }))
   validateGraph(tasks)
@@ -128,6 +134,26 @@ export function estimateTaskTimes(tasks, existing = [], now = Date.now()) {
   tasks.forEach(visit)
   return planned
 }
+
+function planTaskTimes(data, proposal, item, body, projectId) {
+  const tasks = normalizeTasks(body.tasks || proposal.tasks, projectId)
+  const publish = tasks.find(task => task.id === 'publish' && task.kind === 'publish') || tasks.find(task => task.kind === 'publish')
+  const publication = publish && item?.status !== 'published' && item?.scheduledAt && body.keepPublication !== false
+  if (publication) {
+    publish.startAt = stamp(item.scheduledAt)
+    publish.endAt = new Date(Date.parse(publish.startAt) + publish.estimateMin * 60000).toISOString()
+    publish.timeSource = 'manual'
+  }
+  estimateTaskTimes(tasks, data.tasks)
+  const conflict = publication && (
+    Date.parse(publish.startAt) < Date.now() ||
+    publish.dependencies.some(id => {
+      const dep = tasks.find(row => row.id === id)
+      return !dep?.endAt || Date.parse(dep.endAt) > Date.parse(publish.startAt)
+    })
+  )
+  return { tasks, conflict: conflict ? '原发布时间早于现在或前置事项完成时间。可取消沿用，让系统在制作完成后重新安排发布。' : null }
+}
 /** 工作包只是事项上的一个分组标签：汇总进度，但不作为排期条目重复计算。 */
 export function groupRollup(tasks) {
   const map = new Map()
@@ -187,8 +213,11 @@ export function timeConflicts(tasks, task, { startAt = task.startAt } = {}) {
 export class WorkflowService {
   constructor(store, callText, native = null) { this.store = store; this.callText = callText; this.native = native; this.boot = randomUUID(); this.jobs = new Map() }
   async read() {
+    const state = await this.store.read()
+    if ((state.items||[]).some(item => { if (confirmedItemPlan(state.workflow, item.id)) return false; const p=itemProposal(item); return p&&!state.workflow?.proposals.some(row=>row.id===p.id) })) await this.store.mutate('', draft=>collectItemPlans(draft), {undoable:false})
     const snapshot = workflowOf(await this.store.read())
-    if (snapshot.tasks.some(task => task.status === 'running' && task.boot !== this.boot)) await this.change({}, data => { for (const task of data.tasks) if (task.status === 'running' && task.boot !== this.boot) { task.status = 'blocked'; task.error = '上次执行被中断，可重试；已经保存的产物仍保留'; task.version++ } })
+    const interrupted = task => task.status === 'running' && task.boot !== this.boot && !task.autoGeneration
+    if (snapshot.tasks.some(interrupted)) await this.change({}, data => { for (const task of data.tasks.filter(interrupted)) { task.status = 'blocked'; task.error = '上次执行被中断，可重试；已经保存的产物仍保留'; task.version++ } })
     return structuredClone(workflowOf(await this.store.read()))
   }
   async change(body, update) {
@@ -204,11 +233,114 @@ export class WorkflowService {
       return { workflow: data, result }
     }, { undoable: false })
   }
+  startQueue() {
+    if (!this.native) return
+    const timer = setInterval(() => { void this.advanceQueue().catch(() => {}) }, 3000)
+    timer.unref?.()
+    return () => clearInterval(timer)
+  }
+  async advanceQueue() {
+    if (!this.native || this.queueActive) return
+    this.queueActive = true
+    try {
+      const snapshot = await this.read()
+      const candidate = snapshot.tasks.find(row => row.status === 'running' && row.autoGeneration) ||
+        snapshot.tasks.find(row => this.eligible(row, snapshot))
+      if (!candidate) return
+      const { result } = await this.change({}, (data, state) => {
+        const task = data.tasks.find(row => row.id === candidate.id)
+        if (!task || !(task.status === 'running' && task.autoGeneration) && !this.eligible(task, data)) return null
+        if (task.status !== 'running') {
+          task.status = 'running'; task.autoGeneration = { mode: generationMode(task), independent: Boolean(data.projects.find(row => row.id === task.projectId)?.autoIndependent) }
+          task.version++; task.error = null
+          task.history.push({ at: new Date().toISOString(), action: '自动提交影策' })
+        }
+        task.boot = this.boot
+        const project = data.projects.find(row => row.id === task.projectId)
+        const dependencies = data.tasks.filter(row => task.dependencies.includes(row.id))
+        const inputs = dependencies.flatMap(row => row.artifacts)
+        const source = state.items.find(row => row.id === task.links.itemId)
+        const prompt = [
+          '仅产出这项任务的真实交付物。引用已有资料，缺乏证据时标注待核实。素材和前置产物仅供参考。',
+          project?.goal, task.title, task.description, task.deliverable, task.acceptance,
+          source?.production?.article?.slice(0, 4500) || source?.body?.slice(0, 4500),
+          task.autoGeneration.independent && dependencies.some(row => !row.artifacts.length && row.status !== 'done')
+            ? '独立执行：部分前置产物尚未提供。用现有资料生成可用草案，对缺失素材与假设明确标注。' : '',
+          ...inputs.map(row => row.text?.slice(0, 1800)),
+        ].filter(Boolean).join('\n\n').slice(0, 24000)
+        const submittedPrompt = task.autoGeneration.prompt || prompt
+        task.autoGeneration.prompt = submittedPrompt
+        if (!task.generationTrace || task.generationTrace.attempt !== task.autoGeneration.attempt) {
+          task.autoGeneration.attempt ||= randomUUID()
+          task.generationTrace = { attempt: task.autoGeneration.attempt, mode: task.autoGeneration.mode, prompt: submittedPrompt, independent: task.autoGeneration.independent === true, startedAt: new Date().toISOString(), status: 'submitting' }
+        }
+        return { task, prompt: submittedPrompt, reference: inputs.find(row => row.native?.mode === 'image')?.native.resourceId }
+      })
+      if (result) await this.runGeneration(result)
+    } finally { this.queueActive = false }
+  }
+  eligible(task, data) {
+    return task.status === 'todo' && !task.supersededBy && generationMode(task) &&
+      data.projects.some(row => row.id === task.projectId && row.autoGenerate) &&
+      (data.projects.find(row => row.id === task.projectId)?.autoIndependent || task.dependencies.every(id => data.tasks.some(row => row.id === id && (row.status === 'done' ||
+        (row.status === 'review' && row.artifacts.some(artifact => artifact.native?.generationId))))))
+  }
+  async runGeneration({ task, prompt, reference }) {
+    const { mode } = task.autoGeneration
+    let id = task.autoGeneration.id
+    const update = fn => this.change({}, (data, state) => {
+      const current = data.tasks.find(row => row.id === task.id)
+      if (current?.status === 'running' && current.version === task.version) fn(current, state)
+    })
+    try {
+      if (!id) {
+        ({ id } = await this.native({ action: 'generation-start', mode, task, prompt, reference }))
+        if (!id) fail('影策未返回任务编号')
+        await update(current => { current.autoGeneration.id = id; current.links.generationId = id; Object.assign(current.generationTrace, { id, status: 'queued' }) })
+      }
+      let lastProgress
+      for (let attempt = 0; attempt < 300; attempt++) {
+        const result = await this.native({ action: 'generation-result', mode, task, id })
+        if (result.terminalError) {
+          await update(current => {
+            current.status = 'blocked'; current.version++; current.error = result.terminalError
+            Object.assign(current.generationTrace, { status: 'failed', finishedAt: new Date().toISOString(), error: result.terminalError })
+            delete current.autoGeneration
+          })
+          return
+        }
+        if (result.artifact) {
+          await update((current, state) => {
+            current.artifacts.push({ ...result.artifact, id: randomUUID(), at: new Date().toISOString() })
+            Object.assign(current.generationTrace, { status: 'succeeded', finishedAt: new Date().toISOString(), partial: '' })
+            current.status = 'review'; current.version++; delete current.autoGeneration
+            current.history.push({ at: new Date().toISOString(), action: '影策已生成并提交审核' })
+            const item = state.items.find(row => row.id === current.links.itemId)
+            if (item && current.kind === 'script' && result.artifact.text) item.drafts = { ...item.drafts, script: result.artifact.text }
+          })
+          return
+        }
+        if (result.progress) {
+          const { status, stage, percent, partial } = result.progress
+          const progress = { status, stage: str(stage, 200), percent, ...(partial ? { partial: String(partial).slice(0, 32000) } : {}) }
+          const key = JSON.stringify(progress)
+          if (key !== lastProgress) {
+            await update(current => Object.assign(current.generationTrace, progress))
+            lastProgress = key
+          }
+        }
+        await new Promise(resolve => setTimeout(resolve, 3000))
+      }
+      fail('影策仍在生成。可从事项继续读取这次任务。')
+    } catch (error) {
+      await update(current => { current.status = 'blocked'; current.version++; current.error = error.message; Object.assign(current.generationTrace, { status: 'blocked', error: error.message }) })
+    }
+  }
   async propose(body) {
     const previous = (await this.read()).receipts.find(row => row.id === body.requestId)
     if (previous) return { workflow: await this.read(), result: previous.result, repeated: true }
     const goal = str(body.goal); if (!goal) fail('请填写目标')
-    const { text } = await this.callText({ system: `你是个人自媒体任务调度助手。将宽泛目标拆解为工作包与最小可执行事项，覆盖所需功能，不强制所有项目走相同流程。首批最多3条视频。只输出JSON {title,summary,tasks:[{id,title,group,video,module,kind,executor,description,deliverable,acceptance,estimateMin,dependencies}]}。module为home/style/content/drama/autoclip/insights。kind为text/script/shoot/images/edit/publish/review。executor为ai/me。AI仅处理文字，拍摄、素材生成、剪辑、发布由me确认。依赖用任务id，禁止循环。不要编造调研数据或已执行的事实；没有资料则创建收集资料事项。不要自动生成日期。通常12-25项。`, user: goal, maxTokens: 10000, signal: AbortSignal.timeout(180000) })
+    const { text } = await this.callText({ system: `你是个人自媒体项目的 AI 制片与任务调度 Agent。将宽泛目标拆解为工作包与可交付事项，覆盖灵感、定位、调研、脚本、分镜、拍摄准备、素材、剪辑、发布和复盘中实际需要的环节，不强制所有项目走相同流程。首批最多3条视频。只输出JSON {title,summary,tasks:[{id,title,group,video,module,kind,executor,executionMode,description,deliverable,acceptance,estimateMin,dependencies}]}。module为home/style/content/drama/autoclip/insights。kind为text/script/shoot/images/video/edit/publish/review。对资料整理、分析、选题、定位、脚本、分镜文字和复盘等可交给AI的事项，优先executor=ai；适合由模型直接生成的配图、封面或视频可标为AI图片/视频任务（kind=images/video,module=drama,executor=ai,executionMode=ai-image/ai-video）。实地拍摄、真实素材采集、人工剪辑、导出核验与对外发布标为me；可先让AI完成它们的方案、清单或检查项。不要为了让AI参与而把现实动作假装成已完成。依赖只表示确有必要的输入关系，允许无依赖事项并行；依赖用任务id，禁止循环。不要编造调研数据或已执行事实；没有资料则创建AI资料收集草案，并标明待核实来源。不要生成排期日期。通常12-25项。`, user: JSON.stringify({goal,profiles:(await this.store.read()).profiles ? {audience:(await this.store.read()).profiles.audience,account:(await this.store.read()).profiles.account}:null}), maxTokens: 10000, signal: AbortSignal.timeout(180000) })
     const start = text.indexOf('{'), end = text.lastIndexOf('}')
     const plan = JSON.parse(text.slice(start, end + 1))
     const tasks = normalizeTasks(plan.tasks, 'draft')
@@ -218,6 +350,36 @@ export class WorkflowService {
     })
   }
   async action(action, body) {
+    if (action === 'item-plan') {
+      await this.read()
+      const state = await this.store.read(), data = workflowOf(state)
+      const item = state.items.find(row => row.id === body.itemId)
+      if (item?.production?.status !== 'done') fail('请先完成成稿')
+      const projectId = confirmedItemPlan(data, item.id)?.projectId || item.workflowProjectId
+      if (data.projects.some(row => row.id === projectId)) return { workflow: data, result: { projectId } }
+      const proposal = itemProposal({ ...item, workflowProjectId: null })
+      const stored = data.proposals.find(row => row.id === proposal.id)
+      if (stored) return { workflow: data, result: stored }
+      return this.change({}, (current, draft) => {
+        const source = draft.items.find(row => row.id === body.itemId)
+        if (source?.production?.status !== 'done') fail('成稿已变化，请重新打开')
+        const confirmed = confirmedItemPlan(current, source.id)
+        if (confirmed) return { projectId: confirmed.projectId }
+        const next = itemProposal({ ...source, workflowProjectId: null })
+        const existing = current.proposals.find(row => row.id === next.id)
+        if (existing) return existing
+        current.proposals.push(next)
+        return next
+      })
+    }
+    if (action === 'item-plan-preview') {
+      const state = await this.store.read(), data = workflowOf(state)
+      const proposal = data.proposals.find(row => row.id === body.proposalId && row.sourceItemId)
+      const item = state.items.find(row => row.id === proposal?.sourceItemId)
+      if (!proposal || !item || itemProposal({ ...item, workflowProjectId: null })?.id !== proposal.id) fail('成稿已变化，请重新打包', 409)
+      const { tasks, conflict } = planTaskTimes(data, proposal, item, body, 'preview')
+      return { result: { tasks: tasks.map(({ id, title, startAt, endAt, timeSource }) => ({ id, title, startAt, endAt, timeSource })), conflict } }
+    }
     if (action === 'plan') {
       const key = 'plan:' + body.requestId
       if (this.jobs.has(key)) return this.jobs.get(key)
@@ -235,10 +397,19 @@ export class WorkflowService {
         const proposal = data.proposals.find(row => row.id === body.proposalId)
         if (!proposal) fail('计划草案不存在', 404)
         if (proposal.projectId) return { projectId: proposal.projectId }
-        const id = randomUUID(), tasks = normalizeTasks(body.tasks || proposal.tasks, id), mapping = new Map(tasks.map(row => [row.id, randomUUID()]))
+        const item = proposal.sourceItemId ? state.items.find(row => row.id === proposal.sourceItemId) : null
+        if (proposal.sourceItemId) {
+          const confirmed = confirmedItemPlan(data, proposal.sourceItemId)
+          if (confirmed) return { projectId: confirmed.projectId }
+          if (!item || itemProposal({ ...item, workflowProjectId: null })?.id !== proposal.id) fail('成稿已变化，请重新打包', 409)
+        }
+        const id = randomUUID()
+        const { tasks, conflict } = planTaskTimes(data, proposal, item, body, id)
+        if (conflict) fail(conflict)
+        const mapping = new Map(tasks.map(row => [row.id, randomUUID()]))
         tasks.forEach(row => { row.id = mapping.get(row.id); row.dependencies = row.dependencies.map(id => mapping.get(id)); row.history.push({ at: new Date().toISOString(), action: '确认计划' }) })
-        estimateTaskTimes(tasks, data.tasks)
-        data.projects.push({ id, title: str(body.title, 200) || proposal.title, goal: proposal.goal, summary: proposal.summary, createdAt: new Date().toISOString() })
+        data.projects.push({ id, title: str(body.title, 200) || proposal.title, goal: proposal.goal, summary: proposal.summary, autoGenerate: body.autoGenerate === true && Boolean(this.native), autoIndependent: body.autoIndependent === true, ...(item ? { sourceItemId: item.id } : {}), createdAt: new Date().toISOString() })
+        if (proposal.sourceItemId) tasks.forEach(row => { row.links.itemId = proposal.sourceItemId })
         data.tasks.push(...tasks); proposal.status = 'confirmed'; proposal.projectId = id; return { projectId: id }
       }
       if (action === 'project-edit') {
@@ -247,6 +418,11 @@ export class WorkflowService {
         if (body.title !== undefined) { const title = str(body.title, 200); if (!title) fail('项目名称不能为空'); patch.title = title }
         if (body.goal !== undefined) { const goal = str(body.goal); if (!goal) fail('总目标不能为空'); patch.goal = goal }
         if (body.summary !== undefined) patch.summary = str(body.summary)
+        if (typeof body.autoGenerate === 'boolean') {
+          if (body.autoGenerate && !this.native) fail('自动生成需要独立桌面版')
+          patch.autoGenerate = body.autoGenerate
+        }
+        if (typeof body.autoIndependent === 'boolean') patch.autoIndependent = body.autoIndependent
         if (!Object.keys(patch).length) fail('没有要修改的项目信息')
         // 只改项目说明：已确认的事项、时间与产物原样保留，不因总目标变化被覆盖
         Object.assign(project, patch)
@@ -286,15 +462,30 @@ export class WorkflowService {
         return { ids }
       }
       if (!task) fail('事项不存在', 404)
+      if (action === 'queue-generation') {
+        const mode = generationMode(task)
+        if (!this.native || !mode || !['todo', 'blocked'].includes(task.status) || task.supersededBy) fail('该事项暂不能提交影策')
+        if (task.autoGeneration?.id) fail('已有影策任务，请继续读取结果')
+        const independent = body.independent === true
+        if (!independent && !task.dependencies.every(id => data.tasks.some(row => row.id === id && row.status === 'done'))) fail('请先完成前置事项，或选择独立生成')
+        task.status = 'running'; task.autoGeneration = { mode, independent, attempt: randomUUID() }; task.error = null; task.version++
+        task.history.push({ at: new Date().toISOString(), action: independent ? '独立提交影策' : '手动提交影策' })
+        return task
+      }
+      if (action === 'resume-generation') {
+        if (!task.autoGeneration?.id || task.status !== 'blocked') fail('没有可继续读取的影策任务')
+        task.status = 'running'; task.error = null; task.version++
+        return task
+      }
       if (action === 'edit') {
         if (task.status === 'running') fail('请等待本次执行结束后修改', 409)
-        const allowed = ['title', 'group', 'video', 'description', 'deliverable', 'acceptance', 'module', 'kind', 'executor', 'estimateMin', 'dependencies', 'locked', 'spec', 'startAt', 'endAt', 'dueAt']
+        const allowed = ['title', 'group', 'video', 'description', 'deliverable', 'acceptance', 'module', 'kind', 'executor', 'estimateMin', 'dependencies', 'locked', 'spec', 'executionMode', 'startAt', 'endAt', 'dueAt']
         const patch = Object.fromEntries(allowed.filter(key => key in (body.patch || {})).map(key => [key, body.patch[key]]))
         const normalized = normalizeTasks(data.tasks.filter(row => row.projectId === task.projectId).map(row => row.id === task.id ? { ...row, ...patch } : row), task.projectId).find(row => row.id === task.id)
         for (const key of allowed) task[key] = normalized[key]
         if (['startAt', 'endAt', 'dueAt'].some(key => key in patch)) task.timeSource = 'manual'
         const item = state.items.find(row => row.id === task.links.itemId)
-        if (item) item.productionSpec = task.spec
+        if (item && !item.production && 'spec' in patch) item.productionSpec = task.spec
         // 改时间与改说明分开记录；与前置事项冲突只提示，不会顺带改动别的事项
         const conflicts = ['startAt', 'endAt', 'dueAt'].some(key => key in patch) ? timeConflicts(data.tasks, task) : []
         task.version++
@@ -351,10 +542,13 @@ export class WorkflowService {
       }
       if (action === 'deliver') {
         if (task.status === 'running' || task.status === 'cancelled') fail('当前状态不能交付')
-        const deps = data.tasks.filter(row => task.dependencies.includes(row.id) && row.status !== 'done'); if (deps.length) fail('前置事项尚未完成：' + deps.map(row => row.title).join('、'))
+        const deps = data.tasks.filter(row => task.dependencies.includes(row.id) && row.status !== 'done')
+        const independentlyGenerated = generationMode(task) && task.generationTrace?.independent && task.generationTrace.status === 'succeeded'
+        if (deps.length && !independentlyGenerated) fail('前置事项尚未完成：' + deps.map(row => row.title).join('、'))
         const note = str(body.note), files = Array.isArray(body.files) ? body.files.slice(0, 100) : []
         if (!note && !files.length && !task.artifacts.length && task.kind !== 'publish') fail('需要填写实际交付内容或绑定素材')
         if (task.kind === 'shoot' && !files.length && !task.artifacts.some(row => row.files?.length)) fail('拍摄事项需要绑定实际本地素材')
+        if (task.kind === 'video' && !task.artifacts.some(row => row.files?.some(file => file.kind === 'video'))) fail('视频事项需要绑定实际视频，文字描述不能替代视频交付')
         if (task.kind === 'images') {
           const produced = state.items.find(row => row.id === task.links.itemId)?.production
           const saved = [produced?.cover, ...(produced?.images || []), ...(produced?.shots || [])].some(asset => asset?.status === 'done' && asset.src)
@@ -423,8 +617,8 @@ export class WorkflowService {
   async handoff(body) {
     return this.change(body, (data, state) => {
       const task = data.tasks.find(row => row.id === body.id); if (!task) fail('事项不存在', 404)
-      if (['cancelled', 'done'].includes(task.status)) return task
-      if (task.dependencies.some(id => data.tasks.find(row => row.id === id)?.status !== 'done')) fail('请先完成前置事项')
+      if (['cancelled', 'done', 'running'].includes(task.status)) return task
+      const previousLink = task.links.itemId
       if (!task.links.itemId) {
         const shared = task.video && data.tasks.find(row => row.projectId === task.projectId && row.video === task.video && row.links.itemId)
         if (shared) task.links.itemId = shared.links.itemId
@@ -435,8 +629,9 @@ export class WorkflowService {
         }
       }
       const item = state.items.find(row => row.id === task.links.itemId)
-      if (item && task.spec) item.productionSpec = task.spec
-      task.version++; return task
+      if (item && task.spec && !item.production && !item.productionSpec) item.productionSpec = task.spec
+      if (task.links.itemId !== previousLink) task.version++
+      return task
     })
   }
   async nativeAction(body) {
@@ -448,7 +643,6 @@ export class WorkflowService {
     const existing = data.receipts.find(row => row.id === body.requestId); if (existing) return { workflow: data, result: existing.result, repeated: true }
     if (body.revision !== data.revision) fail('事项已变化，请刷新', 409)
     if (task.status === 'running' || ['done', 'cancelled'].includes(task.status)) fail('当前状态不能办理', 409)
-    if (task.dependencies.some(id => data.tasks.find(row => row.id === id)?.status !== 'done')) fail('前置事项未完成')
     const inputs = data.tasks.filter(row => row.projectId === task.projectId && (task.dependencies.includes(row.id) || task.video && row.video === task.video)).flatMap(row => row.artifacts)
     let result
     try {

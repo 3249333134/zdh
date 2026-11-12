@@ -1,3 +1,4 @@
+import { collectItemPlans } from './item-plan.js'
 // 一键成稿流水线：文章 → 标题与画面规划 → 封面、配图、分镜。
 // 任务在 Host 里跑，关掉页面也不会中断；每生成一张图就落盘一次。
 import { writeFile } from 'node:fs/promises'
@@ -175,19 +176,19 @@ export class Producer {
     }, { undoable: false })
   }
 
-  async start(id) {
+  async start(id, requestedSpec) {
     if (this.jobs.has(id)) return false
-    const state = await this.store.read()
-    const item = state.items.find(row => row.id === id)
-    if (!item) throw Object.assign(new Error(tr('找不到这条灵感')), { status: 404 })
+    const spec = requestedSpec ? productionSpec(requestedSpec) : null
     const job = { stage: 'brief', text: '', planText: '', controller: new AbortController() }
     this.jobs.set(id, job)
-    await this.store.mutate('开始成稿', (draft) => {
+    try { await this.store.mutate('开始成稿', (draft) => {
       const target = draft.items.find(row => row.id === id)
+      if (!target) throw Object.assign(new Error(tr('找不到这条灵感')), { status: 404 })
+      if (spec) target.productionSpec = spec
       if (target.production) target.productionHistory = [...(target.productionHistory || []), target.production].slice(-10)
       target.production = { status: 'running', stage: 'brief', startedAt: new Date().toISOString(), title: target.title, article: '', cover: null, images: [], shots: [] }
       return draft
-    }, { undoable: false })
+    }, { undoable: false }) } catch (error) { this.jobs.delete(id); throw error }
     // 不等待：浏览器靠轮询拿进度
     this.run(id, job).catch(() => {}).finally(() => this.jobs.delete(id))
     return true
@@ -222,7 +223,7 @@ export class Producer {
       // 模型漏掉配图或分镜时用模板补上，流水线不能因此少一块
       if (plan.images.length < settings.imageCount) plan.images = [...plan.images, ...backup.images.slice(plan.images.length)]
       if (plan.shots.length < settings.shotCount) plan.shots = [...plan.shots, ...backup.shots.slice(plan.shots.length).map((row, i) => ({ ...row, no: plan.shots.length + i + 1 }))]
-      if (spec) plan.shots = allocateShotTimes(plan.shots, spec.durationSec)
+      if (spec) plan.shots = allocateShotTimes(plan.shots, spec.durationSec).map((shot, index) => ({ ...shot, source: spec.shotSources[index] }))
 
       const ready = this.ready(settings)
       const initial = ready ? 'pending' : 'skipped'
@@ -290,6 +291,7 @@ export class Producer {
         target.production.status = 'done'
         target.production.stage = 'done'
         target.production.finishedAt = new Date().toISOString()
+        collectItemPlans(draft)
         if (['idea', 'outline'].includes(target.status)) target.status = target.scheduledAt ? 'ready' : 'draft'
         return draft
       }, { undoable: false })

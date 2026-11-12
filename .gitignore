@@ -10,9 +10,10 @@ enterprise/lib/
 .enterprise-test/
 .recovery/
 test-data-*/
-dist/
-fill/
-test/
+# 仅忽略仓库根目录的本机打包产物，各子项目自己的 dist/test 仍需入库
+/dist/
+/fill/
+/test/
 *.log
 
 # 构建产物
@@ -27,6 +28,7 @@ workbench/lib/
 /dsh/.local-runtimes/
 /dsh/autoclip/
 /dsh/open-ai-canvas/
+/dsh/dist/
 # media_desk 为本地定制版，源码入库；排除其独立 git 元数据与构建产物
 /dsh/media_desk/.git/
 /dsh/media_desk/node_modules/

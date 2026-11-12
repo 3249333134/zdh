@@ -1,3 +1,4 @@
+import { TrendLauncher } from './trends.jsx'
 // 首页：一句话记一个灵感。灵感可以散落在空间里，也可以按时间排成信息流。
 import React from 'react'
 import { Card, openCapture } from './card.jsx'
@@ -267,7 +268,7 @@ function Scatter() {
   }, [])
 
   const onPointerDown = (event) => {
-    if (event.button !== 0 || event.target.closest('input,textarea,button:not(.md-card),.md-toolrow,.md-ministamps')) return
+    if (event.button !== 0 || event.target.closest('a,input,textarea,button:not(.md-card),.md-toolrow,.md-ministamps')) return
     const cardEl = event.target.closest('[data-node]')
     const startX = event.clientX
     const startY = event.clientY
@@ -447,7 +448,7 @@ export function HomeView() {
   const mode = useDesk(s => s.mode)
   const kind = useDesk(s => s.kindFilter)
   return (
-    <div className="md-home">
+    <div className="md-home"><TrendLauncher/>
       {mode === 'feed' ? <Feed /> : <Scatter />}
       <div className="md-dockbar" role="toolbar" aria-label={t('灵感视图')}>
         <Segmented
