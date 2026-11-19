@@ -2,10 +2,10 @@ import { itemProposal, collectItemPlans, confirmedItemPlan } from './item-plan.j
 import { randomUUID } from 'node:crypto'
 import { productionSpec, normalizeShotSources, SHOT_SOURCES } from './production-spec.js'
 
-export const MODULES = { home: '灵感', style: '风格', content: '内容', drama: '影策', autoclip: '剪辑助手', insights: '复盘' }
+export const MODULES = { home: '灵感', style: '风格', content: '内容', drama: '影策', autoclip: 'Motion', insights: '复盘' }
 export const TASK_STATUSES = ['todo', 'running', 'review', 'blocked', 'done', 'cancelled']
 // 跨模块调用只允许这几类本机操作，其余一律拒绝
-export const NATIVE_ACTIONS = ['import-files', 'yingce', 'yingce-canvas', 'clip-import', 'clip-export']
+export const NATIVE_ACTIONS = ['import-files', 'yingce', 'yingce-canvas', 'clip-import', 'clip-export', 'motion-export']
 const fail = (message, status = 400) => { throw Object.assign(new Error(message), { status }) }
 const str = (value, max = 10000) => typeof value === 'string' ? value.trim().slice(0, max) : ''
 const stamp = value => { if (!value) return null; const date = new Date(value); if (!Number.isFinite(+date)) fail('时间格式不正确'); return date.toISOString() }
@@ -554,7 +554,7 @@ export class WorkflowService {
           const saved = [produced?.cover, ...(produced?.images || []), ...(produced?.shots || [])].some(asset => asset?.status === 'done' && asset.src)
           if (!saved && !task.artifacts.some(row => row.files?.some(file => file.kind === 'image'))) fail('图片事项需要实际生成或绑定的图片，文字描述不能替代图片交付')
         }
-        if (task.kind === 'edit' && !task.artifacts.some(row => row.native?.exportVerified)) fail('请先从剪辑助手核对已完成的导出')
+        if (task.kind === 'edit' && !task.artifacts.some(row => row.native?.exportVerified)) fail('请先到 Motion 关联已导出的成片，或核对旧剪辑项目的导出')
         if (files.length) fail('素材绑定必须通过本地素材核验接口')
         let manifest = null
         if (task.kind === 'publish') {
@@ -664,7 +664,14 @@ export class WorkflowService {
       const now = current.tasks.find(row => row.id === task.id)
       if (now.version !== task.version) fail('对象已变化，已保存的外部产物保留，请重新核对关联', 409)
       now.links = { ...now.links, ...result.links }
-      if (result.artifact) now.artifacts.push({ id: randomUUID(), at: new Date().toISOString(), ...result.artifact })
+      if (result.artifact) {
+        const artifact = { id: randomUUID(), at: new Date().toISOString(), ...result.artifact }
+        if (artifact.native?.motionExport) {
+          const fileId = artifact.files[0].id
+          now.artifacts = now.artifacts.filter(row => !(row.native?.motionExport && row.files?.some(file => file.id === fileId)))
+        }
+        now.artifacts.push(artifact)
+      }
       now.version++; return now
     })
   }

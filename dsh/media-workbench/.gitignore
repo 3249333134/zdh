@@ -1,5 +1,9 @@
 runtime/
-data/
+data/*
+# Motion 模板同步的元数据与完整性报告入库，模板包与封面图等大文件留在本机
+!data/motion-source/
+data/motion-source/covers/
+data/motion-source/sync-2026-11-19/*.motion
 logs/
 .smoke-agent-data/
 .smoke-workflow-data/

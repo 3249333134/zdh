@@ -1,4 +1,5 @@
 import { workflowRequest } from './workflow.jsx'
+import { sendToMotion } from './motion-handoff.js'
 // 点开灵感后的工作区：左边对话，右边是一张稿面。稿面的格子一开始就排好，同时开工，一点点长满。
 import React from 'react'
 import { HotBadge, OriginalLink } from './card.jsx'
@@ -183,6 +184,7 @@ function HeroTile({ item, live, onView }) {
           <div className="md-hero-actions">
             <button type="button" className="md-pill is-primary" disabled={packing} onClick={pack}><Icon name="folder" size={14} />{packing ? '正在整理…' : projectId ? '查看制作计划' : '打包到内容'}</button>
             <button type="button" className="md-pill" onClick={copy}><Icon name="copy" size={14} />{t('复制脚本')}</button>
+            <button type="button" className="md-pill" onClick={() => sendToMotion({ item })}>发送到 Motion</button>
             <button type="button" className="md-pill" onClick={again}><Icon name="refresh" size={14} />重新生成</button>
             <button type="button" className="md-pill" onClick={save} disabled={saving}><Icon name="save" size={14} />{saving ? t('保存中…') : t('保存')}</button>
             <button type="button" className="md-pill" onClick={() => downloadCover({ src: production.cover?.src, text: production.coverText || production.title }, production.title).catch(err => toast(err.message, { error: true }))}><Icon name="image" size={14} />{t('下载封面')}</button>
@@ -194,7 +196,7 @@ function HeroTile({ item, live, onView }) {
               }} />
             </label>
           </div>
-        ) : null}
+        ) : <div className="md-hero-actions"><button type="button" className="md-pill" onClick={() => sendToMotion({ item })}>发送到 Motion</button></div>}
       </div>
       <div className="md-collage">
         <div className="md-collage-main"><Poster production={production} item={item} onOpen={() => onView('cover')} onRetry={settings?.imageReady && production?.status === 'done' && production.cover ? () => regenAsset(item.id, 'cover') : undefined} /></div>

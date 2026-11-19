@@ -1,6 +1,7 @@
 // 灵感卡片：散落、瀑布流复用同一张卡。
 import React from 'react'
 import { setDesk } from './desk.js'
+import { sendToMotion } from './motion-handoff.js'
 import { t } from './i18n.js'
 import { Icon } from './ui.jsx'
 import { KIND_LABEL, STATUS_LABEL, displayItem, hash, relativeDay } from './util.js'
@@ -105,6 +106,12 @@ export function Card({ item: raw, onOpen }) {
         <span className="md-card-time">{running ? <span className="md-shimmer">{t('正在成稿')}</span> : item.production?.status === 'done' ? t('已成稿') : item.scheduledAt && item.status !== 'published' ? relativeDay(item.scheduledAt) : ''}</span>
         <OriginalLink item={raw} />
       </footer>
+      <div className="md-card-actions">
+        <button type="button" title="发送到 Motion" aria-label="发送到 Motion" onClick={event => {
+          event.stopPropagation()
+          sendToMotion({ item: raw })
+        }}><Icon name="film" size={15} /></button>
+      </div>
     </article>
   )
 }

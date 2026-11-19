@@ -41,9 +41,9 @@ function Message({ message, canUndoThis, actions = null }) {
 }
 
 /** 对话面板：首页的助手和成稿工作区共用。每条灵感有自己的对话。 */
-export function ChatPanel({ itemId, head, top = null, suggestions, placeholder, disabled = false, intro = true, messageActions = null }) {
+export function ChatPanel({ itemId, head, top = null, suggestions, placeholder, disabled = false, intro = true, messageActions = null, scope, projectId }) {
   const all = useDesk(s => s.state.chat)
-  const chat = React.useMemo(() => all.filter(m => (m.itemId ?? null) === (itemId ?? null)), [all, itemId])
+  const chat = React.useMemo(() => all.filter(m => (m.itemId ?? null) === (itemId ?? null) && (m.id?.startsWith('tmp_') || (scope ? m.module === scope && (!projectId || m.projectId===projectId) : m.module!=='motion'))), [all, itemId, scope, projectId])
   const thinking = useDesk(s => s.thinking)
   const quote = useDesk(s => s.chatQuote)
   const text = useDesk(s => s.chatDraft)
@@ -135,6 +135,11 @@ export function ChatDock() {
     return task && (s.view === task.module || s.view === 'content' || s.view === 'schedule') ? `当前事项 · ${task.title}` : ''
   })
   const view = useDesk(s => s.view)
+  const hasMotionController = useDesk(s => !!s.motionController)
+  const motionProjectId = useDesk(s => s.motionController?.projectId)
+  const motion = hasMotionController && view === 'autoclip'
+  const motionBusy = useDesk(s => s.motionBusy)
+  const mountMotion = React.useCallback(element=>setDesk({motionAssistantMount:element}),[])
   const context = useDesk(s => s.pageContext)
   const model = useDesk(s => s.model)
   const modelOk = useDesk(s => s.modelOk)
@@ -177,6 +182,10 @@ export function ChatDock() {
   return (
     <aside className="md-dock" aria-label={t('对话助手')}>
       <ChatPanel
+        scope={motion?'motion':undefined}
+        projectId={motion?motionProjectId:undefined}
+        disabled={motion && !!motionBusy}
+        intro={!motion}
         head={(
           <>
             <h2>{t('助手')}</h2>
@@ -188,9 +197,9 @@ export function ChatDock() {
             <IconButton icon="close" label={t('收起对话')} onClick={() => setDesk({ dockOpen: false })} />
           </>
         )}
-        top={<><p className="md-assistant-scope">{useDeskTaskLabel || (view === 'drama' ? `影策 · ${context?.title || '当前页面'}` : view === 'autoclip' ? '剪辑助手 · AutoClip（请在页面中操作剪辑）' : t('自媒体工作台 · 当前页面'))}</p>{model && modelOk === false && modelError ? <ModelAlert model={model} error={modelError} /> : null}</>}
-        suggestions={useDeskTaskLabel ? ['查看交付结果', '执行当前AI事项'] : view === 'drama' ? ['查看当前画布', '打开画布列表'] : SUGGESTIONS.map(row => t(row))}
-        placeholder={t('想改什么，直接说')}
+        top={<><p className="md-assistant-scope">{motion?'Motion · 操作当前工程与选中片段':useDeskTaskLabel || (view === 'drama' ? `影策 · ${context?.title || '当前页面'}` : view === 'autoclip' ? 'Motion · 模板与制作说明' : t('自媒体工作台 · 当前页面'))}</p>{motion && <div ref={mountMotion}/ >}{model && modelOk === false && modelError ? <ModelAlert model={model} error={modelError} /> : null}</>}
+        suggestions={motion ? ['选中片段缩短 1 秒', '把选中片段原声音量降到 30%'] : useDeskTaskLabel ? ['查看交付结果', '执行当前AI事项'] : view === 'drama' ? ['查看当前画布', '打开画布列表'] : SUGGESTIONS.map(row => t(row))}
+        placeholder={motion?'例如：只修改选中片段，缩短到 3 秒':t('想改什么，直接说')}
         messageActions={messageActions}
       />
     </aside>

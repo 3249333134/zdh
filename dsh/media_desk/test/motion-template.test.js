@@ -1,0 +1,10 @@
+import test from 'node:test'
+import assert from 'node:assert/strict'
+import { applyTemplateArrangement } from '../src/motion-template.js'
+import { validateEditor } from '../src/motion-editor.js'
+import { normalizeTimeline } from '../src/motion-timeline.js'
+const template={id:'986-16x9',title:'September',slug:'september',category:'life'}
+const project=()=>normalizeTimeline({id:'test',title:'本期视频',revision:1,width:1280,height:720,fps:30,duration:40,assets:[{id:'one',kind:'video',duration:20,hasAudio:true},{id:'two',kind:'video',duration:30,hasAudio:true}],clips:[{id:'first',type:'video',assetId:'one',start:0,inPoint:10,duration:10,volume:.3},{id:'second',type:'video',assetId:'two',start:10,inPoint:2,duration:20,volume:1}]})
+test('template arrangement uses actual selected source intervals and linked volume, all tracks remain editable',()=>{const p=project(),before=JSON.stringify(p),result=applyTemplateArrangement(p,template,24);validateEditor(result);assert.equal(JSON.stringify(p),before);assert.equal(result.duration,24);assert.equal(result.appliedTemplate.mode,'arrangement');assert.deepEqual(result.assets,p.assets);assert.ok(result.clips.filter(c=>c.type==='video'&&c.assetId==='one').every(c=>c.inPoint>=10&&c.inPoint+c.duration<=20));assert.ok(result.clips.some(c=>c.type==='audio'&&c.volume===.3));assert.equal(result.clips.filter(c=>c.type==='text').length,4)})
+test('template never invents or repeats source duration when requested duration exceeds available media',()=>{const result=applyTemplateArrangement(project(),template,100);assert.equal(result.duration,30);assert.equal(result.clips.filter(c=>c.type==='video').reduce((n,c)=>n+c.duration,0),30);assert.match(result.editSummary,/未调用原版/);validateEditor(result)})
+test('template requires real media and valid duration',()=>{assert.throws(()=>applyTemplateArrangement({...project(),clips:[]},template,30),/导入/);assert.throws(()=>applyTemplateArrangement(project(),template,NaN),/时长/);assert.throws(()=>applyTemplateArrangement(project(),null,30),/有效模板/)})

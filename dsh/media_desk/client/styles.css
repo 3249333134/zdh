@@ -83,6 +83,26 @@ body[data-ds-dark-theme] .md-root { color-scheme: dark; }
 .md-yc-surface { width: 100%; height: 100%; min-height: 0; }
 .md-yc-surface[hidden] { display: none; }
 .md-yc-frame { display: block; width: 100%; height: 100%; border: 0; background: var(--bg); }
+.md-motion { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+.md-motion-body { min-height: 0; overflow: auto; padding: clamp(16px, 3vw, 32px); }
+.md-motion-head, .md-motion-section { max-width: 1040px; margin-inline: auto; }
+.md-motion-head, .md-motion-heading, .md-motion-legacy { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 16px; }
+.md-motion-head { align-items: flex-start; margin-bottom: 24px; }
+.md-motion-head h1 { margin: 0; font-size: clamp(30px, 4vw, 46px); line-height: 1.12; letter-spacing: -.03em; }
+.md-motion-head p, .md-motion-section p { margin: 8px 0 12px; color: var(--ink2); }
+.md-motion-section { padding: 20px; margin-bottom: 14px; border: 1px solid var(--line); border-radius: 16px; background: var(--card); }
+.md-motion-section h2 { margin: 0; font-size: 16px; font-weight: 650; }
+.md-motion-heading > a { color: var(--accent); text-decoration: underline; text-underline-offset: 3px; }
+.md-motion-options { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 150px), 1fr)); gap: 8px; margin: 14px 0; }
+.md-motion-option { display: grid; gap: 5px; padding: 12px; min-height: 64px; text-align: left; border: 1px solid var(--line-strong); border-radius: 10px; }
+.md-motion-option:hover, .md-motion-option[aria-pressed="true"] { background: var(--hover); }
+.md-motion-option[aria-pressed="true"] { border-color: var(--ink); }
+.md-motion-option span { color: var(--ink2); font-size: 12px; }
+.md-motion textarea { display: block; width: 100%; min-height: 74px; resize: vertical; color: var(--ink); background: var(--bg); border: 1px solid var(--line-strong); border-radius: 8px; padding: 10px; margin-bottom: 12px; }
+.md-motion-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.md-motion a.md-btn { text-decoration: none; }
+.md-motion-legacy { justify-content: flex-start; padding: 8px 14px; }
+.md-motion-frame { flex: 1; min-height: 0; }
 .md-yc-message { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; height: 100%; padding: 24px; color: var(--ink2); }
 .md-topbar {
   position: absolute; z-index: 30; left: 0; right: 0; top: 0;
@@ -563,6 +583,10 @@ button.md-receipt:hover { transform: translateX(2px); }
 .md-board-list { display: flex; flex-direction: column; gap: 8px; }
 .md-board-card { display: block; width: 100%; padding: 6px; border-radius: var(--r-lg); background: var(--card); box-shadow: var(--dsw-elevation-soft); transition: transform .3s cubic-bezier(.2, 1.3, .4, 1); cursor: grab; }
 .md-board-card:hover { transform: translateY(-2px); }
+.md-board-entry { position: relative; }
+.md-root .md-board-motion { position: absolute; top: 8px; right: 8px; padding-inline: 7px; opacity: 0; }
+.md-board-entry:hover .md-board-motion, .md-board-entry:focus-within .md-board-motion { opacity: 1; }
+@media (hover: none) { .md-root .md-board-motion { opacity: 1; } }
 .md-board-card img { display: block; width: 100%; height: 92px; object-fit: cover; border-radius: 10px; margin-bottom: 6px; }
 .md-board-card strong { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; padding: 2px 6px 0; font-size: 13px; line-height: 19px; font-weight: 500; }
 .md-board-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; padding: 4px 6px 4px; color: var(--ink3); font-size: 11.5px; line-height: 16px; }

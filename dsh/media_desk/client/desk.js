@@ -219,10 +219,18 @@ export async function sendChat(text) {
     state: { ...s.state, chat: [...s.state.chat, { id: `tmp_${Date.now()}`, role: 'user', text: message, itemId: focusId ?? undefined }] },
   }))
   try {
+    if (!focusId && snapshot.view === 'autoclip' && snapshot.motionController) {
+      const controller=snapshot.motionController
+      let result
+      try { result=await controller.execute(message) } catch(error) { result={text:'本次操作未完成；已完成的步骤和原素材仍然保留。',error:error.message} }
+      const data=await request('chat/motion-result',{message,...result,projectId:controller.projectId})
+      setDesk({state:data.state})
+      return
+    }
     const active = (snapshot.workflow || snapshot.state.workflow)?.tasks.find(row => row.id === snapshot.activeTaskId)
     const scopedTask = !focusId && active && (snapshot.view === active.module || snapshot.view === 'content' || snapshot.view === 'schedule') ? active : null
     const taskCommand = scopedTask && /^(查看当前事项|查看交付结果|执行当前AI事项|提交当前事项到影策)[。！!]?$/i.test(message)
-    const pageContext = !focusId && snapshot.view === 'drama' && !taskCommand ? await callYingce('context') : undefined
+    const pageContext = !focusId && snapshot.view === 'drama' && !taskCommand ? await callYingce('context') : {module:snapshot.view,title:snapshot.pageContext?.title}
     const data = await request('chat', { message, focusId: focusId ?? undefined, pageContext, workflowTaskId: scopedTask?.id })
     if (data.workflow) setDesk({ workflow: data.workflow })
     setDesk({ state: data.state, canUndo: true, modelOk: data.modelOk, modelError: data.modelError, chatSuggestions: data.suggestions?.length ? { messageId: data.answer?.id, items: data.suggestions } : null })

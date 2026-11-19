@@ -4,8 +4,9 @@ import { getDesk, setDesk, useDesk, loadDesk, report, toast, openItem, startProd
 import { Dialog, Icon } from './ui.jsx'
 import { DEFAULT_SPEC, productionSpec, imageTotal, SHOT_SOURCES, normalizeShotSources, shotChecklist, shotSourceSummary } from '../src/production-spec.js'
 import { callYingce } from './yingce-agent.js'
+import { sendToMotion } from './motion-handoff.js'
 
-export const MODULE_LABELS = { home: '灵感', style: '风格', content: '内容', drama: '影策', autoclip: '剪辑助手', insights: '复盘' }
+export const MODULE_LABELS = { home: '灵感', style: '风格', content: '内容', drama: '影策', autoclip: 'Motion', insights: '复盘' }
 export const STATUS_LABELS = { todo: '待开始', running: '处理中', review: '待确认', blocked: '受阻', done: '完成', cancelled: '已取消' }
 export const KIND_LABELS = { text: '资料／文字', script: '脚本', shoot: '拍摄／素材', images: '图片／分镜', edit: '剪辑', publish: '人工发布', review: '复盘' }
 const EMPTY = { revision: 0, projects: [], tasks: [], proposals: [] }
@@ -273,7 +274,10 @@ export async function handleTask(task) {
         await workflowRequest('native', { id: task.id, action: 'yingce-canvas', canvasId })
       }
     }
-    if (current.module === 'autoclip' && current.links.clipProjectId) setDesk({ clipProjectPath: '/project/' + current.links.clipProjectId })
+    if (current.module === 'autoclip') {
+      setDesk({ clipProjectPath: current.links.clipProjectId ? '/project/' + current.links.clipProjectId : null })
+      sendToMotion({ task: current, workflow: result.workflow })
+    }
   } catch (error) { report(error) }
 }
 
@@ -476,7 +480,7 @@ function TaskFields({ task, tasks, onChange, compact = false }) {
     <label className="md-field"><span>事项名称</span><input value={task.title || ''} onChange={event => onChange({ title: event.target.value })} /></label>
     <div className="md-task-field-grid">{[['group', '工作包'], ['video', '关联视频／选题']].map(([key, label]) => <label className="md-field" key={key}><span>{label}</span><input value={task[key] || ''} onChange={event => onChange({ [key]: event.target.value })} /></label>)}
     <label className="md-field"><span>所属功能</span><select value={task.module} onChange={event => onChange({ module: event.target.value })}>{Object.entries(MODULE_LABELS).map(([id, name]) => <option key={id} value={id}>{name}</option>)}</select></label>
-    <label className="md-field"><span>谁来执行／办理方式</span><select value={task.executionMode || (task.executor === 'ai' ? 'ai-text' : 'me')} onChange={event => { const mode=event.target.value; onChange({executionMode:mode,executor:mode==='me'?'me':'ai',...(mode==='ai-image'?{kind:'images',module:'drama'}:mode==='ai-video'?{kind:'video',module:'drama'}:mode==='ai-edit'?{kind:'edit',module:'autoclip'}:mode==='ai-text'?{kind:'text'}:{})}) }}><option value="me">我办理</option><option value="ai-text">AI 文字</option><option value="ai-image">AI 图片 · 影策</option><option value="ai-video">AI 视频 · 影策</option><option value="ai-edit">AI 剪辑 · 剪辑助手</option></select></label>
+    <label className="md-field"><span>谁来执行／办理方式</span><select value={task.executionMode || (task.executor === 'ai' ? 'ai-text' : 'me')} onChange={event => { const mode=event.target.value; onChange({executionMode:mode,executor:mode==='me'?'me':'ai',...(mode==='ai-image'?{kind:'images',module:'drama'}:mode==='ai-video'?{kind:'video',module:'drama'}:mode==='ai-edit'?{kind:'edit',module:'autoclip'}:mode==='ai-text'?{kind:'text'}:{})}) }}><option value="me">我办理</option><option value="ai-text">AI 文字</option><option value="ai-image">AI 图片 · 影策</option><option value="ai-video">AI 视频 · 影策</option><option value="ai-edit">AI 剪辑 · Motion</option></select></label>
     <label className="md-field"><span>事项类型</span><select value={task.kind} onChange={event => onChange({ kind: event.target.value })}>{Object.entries({...KIND_LABELS,video:'视频生成'}).map(([id, name]) => <option key={id} value={id}>{name}</option>)}</select></label>
     <label className="md-field"><span>预计用时（分钟）</span><input type="number" min="5" max="1440" value={task.estimateMin} onChange={event => onChange({ estimateMin: Number(event.target.value) })} /></label></div>
     {[['description', '要做什么'], ['deliverable', '交付物'], ['acceptance', '完成标准']].map(([key, label]) => <label className="md-field" key={key}><span>{label}</span><textarea rows={compact ? 2 : 3} value={task[key] || ''} onChange={event => onChange({ [key]: event.target.value })} /></label>)}
@@ -561,7 +565,7 @@ function TaskDialog() {
     {current && current.status === 'todo' ? <details><summary>拆分／取消事项</summary><label className="md-field"><span>每行一项，至少两项；新事项继承前置依赖</span><textarea id="md-task-split" rows={3} /></label><button className="md-btn" onClick={async () => { const titles = document.getElementById('md-task-split').value.split('\n').map(value => value.trim()).filter(Boolean); if (await act('split', { tasks: titles.map(title => ({ title })) })) close() }}>拆为独立待办</button><button className="md-btn" onClick={async () => { if (await act('cancel')) close() }}>取消此事项</button></details> : null}
     {current ? <><h3>交付与素材</h3>
       {materials.length ? <div className="md-task-materials">{materials.map(file => <span key={file.id} className="md-task-file">{file.name} · {file.path}</span>)}</div> : <p className="md-muted">还没有绑定实际素材。拍摄与素材类事项需要绑定本地文件后才能交付。</p>}
-      <div className="md-task-actions"><button className="md-btn" disabled={busy} onClick={() => act('native', { action: 'import-files' })}>绑定本地素材</button>{current.module === 'autoclip' ? <><button className="md-btn" disabled={busy} onClick={async () => { if (await act('native', { action: 'clip-import' })) { const task = (getDesk().workflow?.tasks || []).find(row => row.id === id); if (task?.links.clipProjectId) setDesk({ clipProjectPath: '/project/' + task.links.clipProjectId, view: 'autoclip' }); close() } }}>确认素材并创建剪辑项目</button><button className="md-btn" disabled={busy} onClick={() => act('native', { action: 'clip-export' })}>核对剪辑导出</button></> : null}{current.module === 'drama' ? <button className="md-btn" disabled={busy} onClick={() => act('native', { action: 'yingce' })}>建立／核对影策交付</button> : null}</div>
+      <div className="md-task-actions"><button className="md-btn" disabled={busy} onClick={() => act('native', { action: 'import-files' })}>绑定本地素材</button>{current.module === 'autoclip' ? <><button className="md-btn" disabled={busy} onClick={async () => { if (await act('native', { action: 'clip-import' })) { const task = (getDesk().workflow?.tasks || []).find(row => row.id === id); if (task?.links.clipProjectId) setDesk({ clipProjectPath: '/project/' + task.links.clipProjectId, view: 'autoclip', activeTaskId: id, clipLegacyRequested: true }); close() } }}>在旧版 AutoClip 创建项目</button><button className="md-btn" disabled={busy} onClick={() => act('native', { action: 'clip-export' })}>核对旧版 AutoClip 导出</button></> : null}{current.module === 'drama' ? <button className="md-btn" disabled={busy} onClick={() => act('native', { action: 'yingce' })}>建立／核对影策交付</button> : null}</div>
       {current.artifacts.map(artifact => <article className="md-task-artifact" key={artifact.id}><small>{fmtTaskTime(artifact.at)} {artifact.model || ''}</small>{artifact.text ? <pre>{artifact.text}</pre> : null}
         {artifact.native?.preview && artifact.native.mode === 'image' ? <img className="md-task-preview-media" src={artifact.native.preview} alt="影策生成结果" loading="lazy" /> : null}
         {artifact.native?.preview && artifact.native.mode === 'video' ? <video className="md-task-preview-media" src={artifact.native.preview} controls preload="metadata" /> : null}

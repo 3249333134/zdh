@@ -1,6 +1,7 @@
 // 内容管理：看板和表格是同一份数据的两种看法。
 import React from 'react'
 import { WorkflowBoard } from './workflow.jsx'
+import { sendToMotion } from './motion-handoff.js'
 import { dispatchOps, openItem, setDesk, useDesk } from './desk.js'
 import { Empty, Icon, Segmented } from './ui.jsx'
 import { plural, t, useLang } from './i18n.js'
@@ -20,28 +21,31 @@ function BoardCard({ item: raw }) {
   const item = displayItem(raw)
   const poster = posterOf(item)
   return (
-    <button
-      type="button"
-      className="md-board-card"
-      draggable
-      onDragStart={(event) => {
-        event.dataTransfer.setData('text/media-desk-item', item.id)
-        event.dataTransfer.effectAllowed = 'move'
-      }}
-      onClick={(event) => {
-        const rect = event.currentTarget.getBoundingClientRect()
-        openItem(item.id, { x: rect.left, y: rect.top, w: rect.width, h: rect.height })
-      }}
-    >
-      {poster ? <img src={poster} alt="" loading="lazy" draggable={false} /> : null}
-      <strong>{item.title}</strong>
-      <span className="md-board-meta">
-        {item.platform ? <span>{t(item.platform)}</span> : null}
-        {item.scheduledAt && item.status !== 'published' ? <span className="is-time">{relativeDay(item.scheduledAt)}</span> : null}
-        {raw.production?.status === 'done' || item.drafts?.article ? <Icon name="pen" size={12} /> : null}
-        {item.drafts?.script ? <Icon name="film" size={12} /> : null}
-      </span>
-    </button>
+    <div className="md-board-entry">
+      <button
+        type="button"
+        className="md-board-card"
+        draggable
+        onDragStart={(event) => {
+          event.dataTransfer.setData('text/media-desk-item', item.id)
+          event.dataTransfer.effectAllowed = 'move'
+        }}
+        onClick={(event) => {
+          const rect = event.currentTarget.getBoundingClientRect()
+          openItem(item.id, { x: rect.left, y: rect.top, w: rect.width, h: rect.height })
+        }}
+      >
+        {poster ? <img src={poster} alt="" loading="lazy" draggable={false} /> : null}
+        <strong>{item.title}</strong>
+        <span className="md-board-meta">
+          {item.platform ? <span>{t(item.platform)}</span> : null}
+          {item.scheduledAt && item.status !== 'published' ? <span className="is-time">{relativeDay(item.scheduledAt)}</span> : null}
+          {raw.production?.status === 'done' || item.drafts?.article ? <Icon name="pen" size={12} /> : null}
+          {item.drafts?.script ? <Icon name="film" size={12} /> : null}
+        </span>
+      </button>
+      <button type="button" className="md-btn is-small md-board-motion" title="发送到 Motion" aria-label="发送到 Motion" onClick={() => sendToMotion({ item: raw })}><Icon name="film" size={15} /></button>
+    </div>
   )
 }
 
@@ -124,7 +128,7 @@ function Table({ items }) {
           {sorted.map((item) => {
             const poster = posterOf(item)
             return (
-              <tr key={item.id} onClick={() => openItem(item.id)} tabIndex={0} onKeyDown={(event) => { if (event.key === 'Enter') openItem(item.id) }}>
+              <tr key={item.id} onClick={() => openItem(item.id)} tabIndex={0} onKeyDown={(event) => { if (event.target === event.currentTarget && event.key === 'Enter') openItem(item.id) }}>
                 <td className="md-table-title">
                   <span className="md-thumb">{poster ? <img src={poster} alt="" loading="lazy" /> : <span>{item.title.slice(0, 1)}</span>}</span>
                   <span><strong>{item.title}</strong><small>{item.parentId ? `${t('分支')} · ` : ''}{t(KIND_LABEL[item.kind])}{item.source ? ` · ${item.source}` : ''}</small></span>
@@ -132,7 +136,10 @@ function Table({ items }) {
                 <td><span className={`md-status status-${item.status}`}>{t(STATUS_LABEL[item.status])}</span></td>
                 <td>{item.platform ? t(item.platform) : '—'}</td>
                 <td className="md-nowrap">{item.scheduledAt ? fmtWhen(item.scheduledAt) : '—'}</td>
-                <td className="md-nowrap">{relativeDay(item.createdAt)}</td>
+                <td className="md-nowrap">{relativeDay(item.createdAt)} <button type="button" className="md-btn is-small" onClick={event => {
+                  event.stopPropagation()
+                  sendToMotion({ item })
+                }}>Motion</button></td>
               </tr>
             )
           })}

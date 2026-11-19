@@ -5,7 +5,7 @@ import { HomeView } from './canvas.jsx'
 import { ChatDock } from './chat.jsx'
 import { ContentView } from './content.jsx'
 import { YingceView } from './yingce.jsx'
-import { AutoClipView } from './autoclip.jsx'
+import { MotionView } from './motion.jsx'
 import { WorkflowRuntime, TaskStrip, GenerationProcess } from './workflow.jsx'
 import { captureFiles, captureUrl, dispatchOps, loadDesk, setDesk, undo, useDesk } from './desk.js'
 import { InsightsView } from './insights.jsx'
@@ -28,7 +28,7 @@ const NAV = [
   { id: 'content', label: '内容' },
   { id: 'schedule', label: '排期' },
   { id: 'drama', label: '影策' },
-  { id: 'autoclip', label: '剪辑助手' },
+  { id: 'autoclip', label: 'Motion' },
   { id: 'insights', label: '复盘' },
   { id: 'style', label: '风格', navKey: '风格（导航）' },
   { id: 'knowledge', label: '知识库' },
@@ -186,7 +186,7 @@ function Desk() {
           ) : ready ? <>
             {!['drama', 'autoclip'].includes(view) ? <Active key={view} /> : null}
             {view === 'drama' || dramaVisited ? <div className="md-yc-surface" hidden={view !== 'drama'}><YingceView /></div> : null}
-            {view === 'autoclip' || clipVisited ? <div className="md-yc-surface" hidden={view !== 'autoclip'}><AutoClipView /></div> : null}
+            {view === 'autoclip' || clipVisited ? <div className="md-yc-surface" hidden={view !== 'autoclip'}><MotionView /></div> : null}
           </> : <div className="md-loading"><span className="md-shimmer">{t('正在铺开灵感…')}</span></div>}
         </main>
         {ready ? <Studio /> : null}

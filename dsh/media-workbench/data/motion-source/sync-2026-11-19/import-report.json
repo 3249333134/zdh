@@ -1,0 +1,20 @@
+{
+  "source": "https://github.com/motiontemplates/all",
+  "templates": [
+    {
+      "id": "626-16x9",
+      "file": "D:\\prj\\zdh\\dsh\\media-workbench\\data\\motion-templates\\626-16x9\\472a95af35f8e0c09c0f7dc2ca0992b7c9a3405c5aa8063730c347fc4e015c21\\kinetic-tech-zh.motion",
+      "sha256": "472a95af35f8e0c09c0f7dc2ca0992b7c9a3405c5aa8063730c347fc4e015c21",
+      "verifiedFiles": 330,
+      "version": "0.2.7-open-beta"
+    },
+    {
+      "id": "626-en-16x9",
+      "file": "D:\\prj\\zdh\\dsh\\media-workbench\\data\\motion-templates\\626-en-16x9\\533320d081c578cb824dfbc6ce9d4ae3eb1ca190d67ae7185b4a32b02e236255\\kinetic-tech-en.motion",
+      "sha256": "533320d081c578cb824dfbc6ce9d4ae3eb1ca190d67ae7185b4a32b02e236255",
+      "verifiedFiles": 330,
+      "version": "0.2.7-open-beta"
+    }
+  ],
+  "removedEntries": 155
+}

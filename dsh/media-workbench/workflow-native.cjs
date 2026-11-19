@@ -96,6 +96,29 @@ async function handle(input, options) {
   const { task, project } = input;
   if (!task || !/^[a-zA-Z0-9_-]{1,100}$/.test(task.id)) throw new Error('无效事项');
   const ledgerFile = path.join(data, 'workflow-native.json');
+  if (input.action === 'motion-export') {
+    if (task.module !== 'autoclip' || task.kind !== 'edit') throw new Error('只能为剪辑事项关联成片');
+    const picked = await dialog.showOpenDialog(win, {
+      title: '选择 Motion 已导出的 MP4',
+      properties: ['openFile'],
+      filters: [{ name: 'MP4 视频', extensions: ['mp4'] }],
+    });
+    if (picked.canceled || !picked.filePaths.length) throw new Error('已取消成片关联');
+    const file = picked.filePaths[0];
+    if (path.extname(file).toLowerCase() !== '.mp4') throw new Error('请选择 MP4 成片');
+    const stat = fs.lstatSync(file);
+    if (!stat.isFile() || !stat.size) throw new Error('成片为空或不是可读文件');
+    const probe = await execute(path.join(ffmpegBin, 'ffprobe.exe'), ['-v', 'error', '-show_entries', 'format=duration:stream=codec_type', '-of', 'json', file], { windowsHide: true, timeout: 30000 });
+    const info = JSON.parse(probe.stdout);
+    const duration = Number(info.format?.duration);
+    if (!info.streams?.some(stream => stream.codec_type === 'video') || !Number.isFinite(duration) || duration <= 0) {
+      throw new Error('无法读取成片的视频轨或时长');
+    }
+    const index = path.join(data, 'local-assets.json');
+    const indexed = assets.importPaths(index, [file]).find(row => row.path.toLowerCase() === path.resolve(file).toLowerCase());
+    if (!indexed) throw new Error('成片无法加入本地素材索引');
+    return { artifact: { text: '已核对 Motion 成片的视频轨和时长。', files: [{ ...indexed, name: indexed.title }], native: { exportVerified: true, motionExport: true, duration } } };
+  }
   const ledger = fs.existsSync(ledgerFile) ? JSON.parse(fs.readFileSync(ledgerFile, 'utf8')) : {};
   const identity = `${task.id}:${input.action}`;
   if (ledger[identity] && !ledger[identity].partial && input.action !== 'clip-export' && input.action !== 'import-files') return ledger[identity];
@@ -176,7 +199,10 @@ async function handle(input, options) {
   ledger[identity] = result; atomic(ledgerFile, ledger); return result;
 }
 module.exports = (input, options) => {
+  if (typeof input.action === 'string' && input.action.startsWith('motion-editor-')) return require('./motion-editor.cjs')(input, options);
+  if (typeof input.action === 'string' && input.action.startsWith('motion-production-')) return require('./motion-production.cjs')(input, options);
   if (input.action === 'knowledge-read') return require('./knowledge-collect.cjs')(options);
+  if (['motion-library-list', 'motion-library-import'].includes(input.action)) return require('./motion-library.cjs')(input, options);
   const key = input.task?.id + ':' + input.action;
   if (inflight.has(key)) return inflight.get(key);
   const operation = (['generation-start', 'generation-result'].includes(input.action) ? generate(input, options) : handle(input, options)).finally(() => inflight.delete(key)); inflight.set(key, operation); return operation;
