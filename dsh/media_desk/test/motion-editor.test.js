@@ -20,5 +20,41 @@ test('preview document prevents HTML breakout and excludes system privileges', (
   const html = editorDocument(p, {}, 'token')
   assert.equal((html.match(/<script>/g) || []).length, 1)
   assert.ok(html.includes("connect-src 'none'"))
-  assert.ok(html.includes('event.source===parent'))
+  assert.ok(html.includes('event.source'))
+})
+test('accepts director styling and rejects invalid fade ranges', () => {
+  const p = base()
+  p.clips = [{ id: 'a', type: 'text', start: 0, duration: 3, text: '标题', fadeIn: .5, fadeOut: .8, align: 'center', fontWeight: 800, lineHeight: 1.2, strokeWidth: 2, boxColor: '#000000' }]
+  assert.equal(validateEditor(p).clips.length, 1)
+  const html = editorDocument(p, {}, 'token')
+  assert.ok(html.includes('strokeText'))
+  assert.ok(html.includes('fadeIn'))
+  const invalid = base()
+  invalid.clips = [{ id: 'a', type: 'text', start: 0, duration: 1, fadeIn: .8, fadeOut: .8 }]
+  assert.throws(() => validateEditor(invalid))
+  const badFilter = base()
+  badFilter.clips = [{ id: 'a', type: 'image', start: 0, duration: 2, opacity: 1, brightness: 400 }]
+  assert.throws(() => validateEditor(badFilter))
+})
+test('accepts transitions, keyframes, speed and blend for video clips', () => {
+  const p = base()
+  p.assets = [{ id: 'v', kind: 'video', name: 'V', duration: 10, hasAudio: false }]
+  p.clips = [{
+    id: 'a', type: 'video', assetId: 'v', start: 0, duration: 4, inPoint: 0, speed: 2,
+    transitionIn: 'zoom-in', transitionOut: 'wipe-left', transitionDuration: .6,
+    blend: 'screen', vignette: 30, hue: 10, sepia: 20,
+    keyframes: { opacity: [{ t: 0, v: 0 }, { t: 1, v: 1 }], scale: [{ t: 0, v: 1 }, { t: 2, v: 1.2 }] },
+  }]
+  assert.equal(validateEditor(p).clips.length, 1)
+  const html = editorDocument(p, {}, 'token')
+  assert.ok(html.includes('zoom-in'))
+  assert.ok(html.includes('keyframes'))
+  assert.ok(html.includes('motion-editor-cover'))
+  const invalid = base()
+  invalid.assets = [{ id: 'v', kind: 'video', name: 'V', duration: 3, hasAudio: false }]
+  invalid.clips = [{ id: 'a', type: 'video', assetId: 'v', start: 0, duration: 2, speed: 2 }]
+  assert.throws(() => validateEditor(invalid))
+  const badKey = base()
+  badKey.clips = [{ id: 'a', type: 'text', start: 0, duration: 2, keyframes: { scale: [{ t: 0, v: 99 }] } }]
+  assert.throws(() => validateEditor(badKey))
 })

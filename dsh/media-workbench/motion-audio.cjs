@@ -38,7 +38,7 @@ async function transcribe(p,dir,options,request,run) {
   const pending=assets.filter(a=>!transcripts.some(t=>t.assetId===a.id));
   if(pending.length){
     const input=path.join(dir,'transcribe-input.json'),output=path.join(dir,'transcribe-output.json');
-    await fs.writeFile(input,JSON.stringify({model,assets:pending,output,ffmpeg:path.join(options.ffmpegBin,'ffmpeg.exe')}));
+    await fs.writeFile(input,JSON.stringify({model,assets:pending,output,ffmpeg:path.join(options.ffmpegBin,process.platform==='win32'?'ffmpeg.exe':'ffmpeg')}));
     await run(path.join(options.data,'motion-runtime/python/Scripts/python.exe'),[path.join(__dirname,'motion-transcribe.py'),input],options,{timeout:540000,env:{...process.env,PYTHONUTF8:'1',HF_HUB_OFFLINE:'1'}});
     transcripts.push(...JSON.parse(await fs.readFile(output,'utf8')));await fs.writeFile(cache,JSON.stringify(transcripts));
   }

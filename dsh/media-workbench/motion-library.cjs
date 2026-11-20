@@ -28,6 +28,25 @@ async function list(root) {
   return rows.sort((a, b) => b.savedAt - a.savedAt);
 }
 
+async function importPackage(source, data) {
+  const { execFile } = require('node:child_process');
+  const { promisify } = require('node:util');
+  const unzip = promisify(execFile);
+  let manifest;
+  try {
+    const { stdout } = await unzip('/usr/bin/unzip', ['-p', source, 'motion.json'], { maxBuffer: 65536, timeout: 10000 });
+    manifest = JSON.parse(stdout);
+  } catch {
+    throw new Error('无法读取 .motion 包的工程清单');
+  }
+  const id = manifest?.extensions?.['motiongit.com:delivery-stage']?.templateId;
+  if (manifest?.format !== 'motiongit-template' || !Number.isSafeInteger(id) || id < 1) throw new Error('不支持此 .motion 模板格式');
+  return module.exports({ action: 'motion-library-import', template: 'motiongit-' + id }, {
+    data,
+    dialog: { showOpenDialog: async () => ({ filePaths: [source] }) },
+  });
+}
+
 module.exports = async (input, { data, win, dialog }) => {
   const root = path.join(data, 'motion-templates');
   if (input.action === 'motion-library-list') return { rows: await list(root) };
@@ -47,6 +66,7 @@ module.exports = async (input, { data, win, dialog }) => {
   try {
     const copy = path.join(temporary, name);
     await fs.copyFile(source, copy);
+    await fs.chmod(copy, 0o600);
     const handle = await fs.open(copy, 'r');
     try {
       const signature = Buffer.alloc(4);
@@ -67,3 +87,5 @@ module.exports = async (input, { data, win, dialog }) => {
   }
   return { rows: await list(root) };
 };
+
+module.exports.importPackage = importPackage;

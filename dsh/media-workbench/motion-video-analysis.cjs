@@ -8,7 +8,7 @@ const run=(exe,args,options)=>new Promise((resolve,reject)=>{
 module.exports=async function analyze(project,dir,options,{allowFrames=false}={}){
  const videos=project.assets.filter(a=>a.kind==='video');if(!videos.length)throw Error('请先导入要剪辑的视频');
  if(videos.length>8)throw Error('单次请使用不超过8个视频素材');
- const ffmpeg=path.join(options.ffmpegBin,'ffmpeg.exe'),folder=path.join(dir,'video-analysis');await fs.mkdir(folder,{recursive:true});
+ const ffmpeg=path.join(options.ffmpegBin,process.platform==='win32'?'ffmpeg.exe':'ffmpeg'),folder=path.join(dir,'video-analysis');await fs.mkdir(folder,{recursive:true});
  const analysis={videos:[],visualAnalysis:'未发送画面到模型，仅使用本地时间结构。',frameAnalysis:false},sheets=[];
  for(const asset of videos){
   const seconds=Math.min(asset.duration,600),cuts=[],silences=[];

@@ -155,14 +155,15 @@ function Desk() {
 
   // 工作区有自己的对话栏
   const focused = useDesk(s => Boolean(s.focusId))
-  const showDock = dockOpen && !focused
+  const motionEditing = useDesk(s => view === 'autoclip' && Boolean(s.motionController))
+  const showDock = dockOpen && !focused && !motionEditing
   const [dramaVisited, setDramaVisited] = React.useState(false)
   const [clipVisited, setClipVisited] = React.useState(false)
   React.useEffect(() => { if (view === 'autoclip') setClipVisited(true) }, [view])
   React.useEffect(() => { if (view === 'drama') setDramaVisited(true) }, [view])
   const Active = VIEWS[view] ?? HomeView
   return (
-    <div className={`md-root ${view === 'home' ? 'is-inspiration' : ''} ${['drama', 'autoclip'].includes(view) ? 'is-yingce' : ''} ${narrow ? 'is-narrow' : ''} ${width < 780 ? 'is-compact' : ''} ${showDock ? 'has-dock' : ''}`} ref={rootRef}>
+    <div className={`md-root ${view === 'home' ? 'is-inspiration' : ''} ${['drama', 'autoclip'].includes(view) ? 'is-yingce' : ''} ${narrow ? 'is-narrow' : ''} ${width < 780 ? 'is-compact' : ''} ${showDock ? 'has-dock' : ''} ${motionEditing ? 'is-motion-editing' : ''}`} ref={rootRef}>
       <style>{css + workflowCss}</style>
       <div className="md-ambient" aria-hidden="true"><i /><i /><i /></div>
       <div className="md-main">
@@ -175,11 +176,11 @@ function Desk() {
           <span style={{ flex: 1 }} />
           {canUndo ? <IconButton icon="undo" label={t('撤销上一步')} onClick={undo} /> : null}
           {ready ? <ModelButton /> : null}
-          <IconButton icon="chat" label={t(showDock ? '收起全局助手' : '打开全局助手')} active={showDock} onClick={() => setDesk({ dockOpen: !dockOpen })} />
+          <IconButton icon="chat" label={t(showDock ? '收起全局助手' : '打开全局助手')} active={showDock} onClick={() => setDesk(motionEditing ? { motionInspectorTab: 'assistant' } : { dockOpen: !dockOpen })} />
           <WorkbenchToolbar><SampleBadge /></WorkbenchToolbar>
         </header>
-        {ready ? <TaskStrip /> : null}
-        {ready ? <GenerationProcess /> : null}
+        {ready && !motionEditing ? <TaskStrip /> : null}
+        {ready && !motionEditing ? <GenerationProcess /> : null}
         <main className="md-content">
           {error ? (
             <div className="md-page"><p className="md-muted">{t('工作台加载失败：{error}', { error })}</p><button type="button" className="md-btn" onClick={loadDesk}>{t('重试')}</button></div>

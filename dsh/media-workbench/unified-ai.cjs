@@ -24,11 +24,7 @@ function validate(input, previous) {
   if (!config.name || !config.textModel || !config.apiKey || config.apiKey.length > 2000 || /[\r\n]/.test(config.apiKey)) throw new Error('请填写服务名称、密钥和文字模型');
   return config;
 }
-function prepareDsh(root, data, config) {
-  if (!config?.apiKey) return;
-  const yaml = require(path.join(root, 'runtime/host/resources/app.asar/dsh/node_modules/yaml'));
-  const file = path.join(data, 'dsh/profiles/web/cordis.patch.yml');
-  const entries = yaml.parse(fs.readFileSync(file, 'utf8')) || [];
+function configureDsh(entries, config) {
   const upsert = (id, fields) => {
     const entry = entries.find(row => row.id === id);
     if (entry) Object.assign(entry, fields); else entries.push({ id, ...fields });
@@ -40,6 +36,13 @@ function prepareDsh(root, data, config) {
     compat: { supportsDeveloperRole: false, maxTokensField: 'max_tokens' }, retryPolicy: { mode: 'normal', maxRetries: 1 },
   } } } });
   upsert('agent-default-model', { config: { provider: 'workbench-ai', model: config.textModel } });
+}
+function prepareDsh(root, data, config) {
+  if (!config?.apiKey) return;
+  const yaml = require(path.join(root, 'runtime/host/resources/app.asar/dsh/node_modules/yaml'));
+  const file = path.join(data, 'dsh/profiles/web/cordis.patch.yml');
+  const entries = yaml.parse(fs.readFileSync(file, 'utf8')) || [];
+  configureDsh(entries, config);
   fs.writeFileSync(file + '.tmp', yaml.stringify(entries)); fs.renameSync(file + '.tmp', file);
   const deskFile = path.join(data, 'dsh/media-desk/settings.json');
   const desk = fs.existsSync(deskFile) ? JSON.parse(fs.readFileSync(deskFile, 'utf8')) : {};
@@ -69,6 +72,7 @@ async function synchronize(config, { canvasCookie, clipPort }) {
     const capabilityConfig = { version: 1, ...(capability === 'text' ? { text: { streaming: true, contextWindowTokens: 262144, maxOutputTokens: 16384, references: { promptMaxChars: 32000, maxImages: 8, maxImageBytes: 10485760 } } } : capability === 'image' ? { image: { references: { promptMaxChars: 32000, maxImages: 0, maxImageBytes: 0, maskSupported: false }, size: { parameter: 'size', values: ['1024x1024'], default: '1024x1024', allowCustom: false }, quality: { supported: false }, transparentBackground: { supported: false }, responseFormat: { supported: true, default: 'url' }, outputFormat: { supported: false }, maxOutputs: 1 } } : { video: { references: { promptMaxChars: 32000, minImages: 0, maxImages: 1, maxImageBytes: 10485760 }, duration: { selection: 'enum', values: [5, 10], default: 5 }, ratios: ['16:9', '9:16', '1:1'], defaultRatio: '16:9', resolutions: ['720p', '1080p'], defaultResolution: '720p', generateAudio: { supported: false, default: false }, watermark: { supported: false, default: false }, operations: ['text_to_video', 'image_to_video'], defaultOperation: 'text_to_video' } }) };
     await json(base + `/admin/channels/${channel.id}/models` + (model ? '/' + model.id : ''), { method: model ? 'PATCH' : 'POST', cookie: canvasCookie, body: { modelKey, displayName: modelKey, capability, protocol, capabilityConfig, enabled: true, billingMode: 'fixed_request', priceConfigured: true, unitPriceMicrocredits: 0 } });
   }
+  if (!clipPort) return { canvas: true, canvasChannelId: channel.id };
   const clipBase = `http://127.0.0.1:${clipPort}/api/v1/settings/ai-models`;
   const previous = await json(clipBase);
   const connection = { id: 'workbench-ai', name: config.name, provider: 'compatible', base_url: config.baseUrl, api_key: config.apiKey, base_url_source: 'user', validation_status: 'unchecked', custom_models: [
@@ -79,4 +83,4 @@ async function synchronize(config, { canvasCookie, clipPort }) {
     cover: config.imageModel ? { connection_id: 'workbench-ai', model: config.imageModel, model_source: 'user' } : null, cover_enabled: false, cover_follows_analysis: true, cover_choice_version: 1 } });
   return { canvas: true, autoclip: true, canvasChannelId: channel.id };
 }
-module.exports = { read, atomic, validate, publicConfig, prepareDsh, synchronize };
+module.exports = { read, atomic, validate, publicConfig, configureDsh, prepareDsh, synchronize };

@@ -119,6 +119,20 @@ export function MotionView() {
     ].filter(Boolean).join('\n\n')
     try { await navigator.clipboard.writeText(brief); toast('已复制 Motion 制作说明') } catch (error) { report(error) }
   }
+  const importTemplate = async file => {
+    setBusy(true)
+    setLibraryError('')
+    try {
+      const query = new URLSearchParams({ id: 'template', name: file.name })
+      const response = await fetch('media-desk/motion-upload?' + query, { method: 'POST', body: file })
+      const result = await response.json()
+      if (!response.ok) throw Error(result.error || '模板导入失败')
+      setSaved(result.rows)
+      setDetail(false)
+      toast('模板已保存到本机')
+    } catch (error) { setLibraryError(error.message); report(error) }
+    finally { setBusy(false) }
+  }
   const importExport = async () => {
     setBusy(true)
     try {
@@ -142,6 +156,18 @@ export function MotionView() {
         <a className="md-motion-official" href={library} target="_blank" rel="noreferrer">官方模板中心 ↗</a>
         <button type="button" className="md-btn" onClick={() => setLegacy(true)}>旧剪辑项目</button>
       </header>
+      <section className="md-motion-section">
+        <label>导入本地 .motion 模板 <input type="file" accept=".motion" disabled={busy} onChange={event=>{
+          const file = event.target.files?.[0]
+          event.target.value = ''
+          if (file) void importTemplate(file)
+        }}/></label>
+        {saved.some(row=>row.template.startsWith('motiongit-')) && <details open>
+          <summary>已导入的 MotionGit 模板</summary>
+          <ul>{saved.filter(row=>row.template.startsWith('motiongit-')).map(row=><li key={row.path}>{row.name}</li>)}</ul>
+          <p className="md-muted">个人发布包保存在本机。受保护的模板需由 MotionGit 授权运行时打开。</p>
+        </details>}
+      </section>
       {!detail ? <>
         <div className="md-motion-hero">
           <div><p className="md-motion-index">模板目录 · {templates.length} 项</p><h1>视频模板，<span>换一组内容就是新视频。</span></h1><p>从口播、品牌叙事到知识讲解。仅展示已导入原包、已接入本机渲染的模板。选择模板后直接应用到剪辑工作区。</p></div>

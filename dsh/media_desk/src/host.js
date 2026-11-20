@@ -356,11 +356,19 @@ async function route(ctx, store, desk, req, res) {
   const path = url.pathname.replace(/^\/media-desk\/?/, '')
   const method = req.method || 'GET'
   const editorOutput = /^motion-editor\/([a-f0-9-]{36})\/([a-f0-9-]{36})\/video\.mp4$/.exec(path)
-  if (editorOutput && ['GET', 'HEAD'].includes(method)) return sendFile(req, res, join(dshHome(), '..', 'motion-editor', editorOutput[1], editorOutput[2], 'video.mp4'))
+  if (editorOutput && ['GET', 'HEAD'].includes(method)) return sendFile(req, res, join(dshHome(), process.env.WORKBENCH_BROWSER_AUTH === '1' ? '.' : '..', 'motion-editor', editorOutput[1], editorOutput[2], 'video.mp4'))
+  if (path === 'motion-upload' && method === 'POST' && process.env.WORKBENCH_BROWSER_AUTH === '1') {
+    if (req.headers['sec-fetch-site'] && req.headers['sec-fetch-site'] !== 'same-origin') return json(res, 403, {})
+    const target = new URL('http://127.0.0.1:13001/api/workbench/motion-upload')
+    target.search = url.search
+    const response = await fetch(target, { method: 'POST', headers: { 'x-workbench-native': process.env.WORKBENCH_NATIVE_KEY }, body: req, duplex: 'half', signal: AbortSignal.timeout(300000) })
+    const result = await response.json()
+    return json(res, response.status, response.ok ? result.result : result)
+  }
   if (path === 'motion-editor' && method === 'POST') {
     if (!desk.native) return json(res, 503, { error: '请在独立桌面版打开创作工作区' })
     const input = await readJson(req)
-    if (['create', 'read', 'save', 'import', 'render', 'status', 'list', 'voices', 'speech', 'source', 'fork-video', 'waveforms', 'thumbnails', 'music', 'subtitles', 'template-start', 'template-attach'].includes(input.action)) {
+    if (['create', 'read', 'save', 'import', 'render', 'status', 'list', 'voices', 'speech', 'source', 'fork-video', 'copy-project', 'waveforms', 'thumbnails', 'music', 'subtitles', 'template-start', 'template-attach', 'export-workspace', 'import-workspace', 'open-workspace'].includes(input.action)) {
       return json(res, 200, await desk.native({ ...input, action: 'motion-editor-' + input.action }))
     }
     if(input.action==='command') return json(res,200,await planMotionCommand({project:validateEditor(input.project),selectedId:input.selectedId,time:input.time,message:String(input.message||'').slice(0,6000),call:request=>callModel(ctx,{...request,light:true,signal:AbortSignal.timeout(120000)})}))
@@ -520,7 +528,9 @@ async function route(ctx, store, desk, req, res) {
     }
     if (path === 'yingce/status') {
       const settings = await desk.settings.read()
-      return json(res, 200, await describeYingceStatus(settings))
+      const status = await describeYingceStatus(settings)
+      if (process.env.WORKBENCH_BROWSER_AUTH === '1' && settings.yingce.webUrl === 'http://127.0.0.1:13001') status.launchPath = '/media-workbench/canvas'
+      return json(res, 200, status)
     }
     if (path === 'monid/status') return json(res, 200, await monidStatus(desk.monid))
     return json(res, 404, { error: tr('接口不存在') })

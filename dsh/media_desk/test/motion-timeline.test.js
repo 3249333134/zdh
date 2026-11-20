@@ -45,6 +45,24 @@ test('several library videos can be appended and the project extends with them',
  let p={...base(),clips:[],duration:30};p=addMediaClip(p,'a',0);assert.equal(p.duration,20);p=addMediaClip(p,'b',20)
  assert.equal(p.duration,40);assert.deepEqual(p.clips.filter(c=>c.type==='video').map(c=>c.start),[0,20]);assert.equal(tracksOf(p).length,6);validateEditor(p)
 })
+test('speed is reflected in split and left trim source in-points',()=>{
+ const p={...base(),clips:[{id:'v',type:'video',assetId:'a',title:'A',start:2,duration:4,inPoint:2,speed:2,volume:0}]}
+ const split=splitTimeline(p,['v'],4),second=split.clips.find(c=>c.start===4)
+ assert.equal(second.inPoint,6);validateEditor(split)
+ const trimmed=trimTimeline(p,'v','left',-1)
+ assert.equal(trimmed.clips[0].start,1);assert.equal(trimmed.clips[0].inPoint,0);validateEditor(trimmed)
+ const longer=trimTimeline(p,'v','right',50)
+ assert.equal(longer.clips[0].duration,9);validateEditor(longer)
+})
+test('keyframes stay inside the clip after split and trim',()=>{
+ const p={...base(),clips:[{id:'k',type:'text',text:'动效',start:0,duration:4,keyframes:{scale:[{t:0,v:1},{t:3.5,v:1.3}]}}]}
+ const split=splitTimeline(p,['k'],2)
+ const first=split.clips.find(c=>c.start===0),second=split.clips.find(c=>c.start===2)
+ assert.deepEqual(first.keyframes.scale.map(row=>row.t),[0]);assert.deepEqual(second.keyframes.scale.map(row=>row.t),[1.5])
+ validateEditor(split)
+ const trimmed=trimTimeline(p,'k','right',-1)
+ assert.ok(trimmed.clips[0].keyframes.scale.every(row=>row.t<=3.001));validateEditor(trimmed)
+})
 test('legacy video that covered lower animation layers stays in front after migration',()=>{
  const p=base();delete p.tracks;p.clips=p.clips.filter(c=>c.type==='video').map(c=>({...c,layer:5}));p.clips.push({id:'old-effect',type:'animation',start:0,duration:4,layer:1,code:''})
  const resolved=resolveTimeline(normalizeTimeline(p))

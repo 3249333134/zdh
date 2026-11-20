@@ -129,7 +129,7 @@ function ModelAlert({ model, error }) {
   )
 }
 
-export function ChatDock() {
+export function ChatDock({ embedded = false } = {}) {
   const useDeskTaskLabel = useDesk(s => {
     const task = (s.workflow || s.state?.workflow)?.tasks.find(row => row.id === s.activeTaskId)
     return task && (s.view === task.module || s.view === 'content' || s.view === 'schedule') ? `当前事项 · ${task.title}` : ''
@@ -180,7 +180,7 @@ export function ChatDock() {
     </>
   }
   return (
-    <aside className="md-dock" aria-label={t('对话助手')}>
+    <aside className={embedded ? "md-dock me-embedded-chat" : "md-dock"} aria-label={t('对话助手')}>
       <ChatPanel
         scope={motion?'motion':undefined}
         projectId={motion?motionProjectId:undefined}
@@ -194,7 +194,7 @@ export function ChatDock() {
             </span>
             <span style={{ flex: 1 }} />
             {hasChat ? <IconButton icon="refresh" label={t('清空对话')} onClick={clearChat} /> : null}
-            <IconButton icon="close" label={t('收起对话')} onClick={() => setDesk({ dockOpen: false })} />
+            {!embedded && <IconButton icon="close" label={t('收起对话')} onClick={() => setDesk({ dockOpen: false })} />}
           </>
         )}
         top={<><p className="md-assistant-scope">{motion?'Motion · 操作当前工程与选中片段':useDeskTaskLabel || (view === 'drama' ? `影策 · ${context?.title || '当前页面'}` : view === 'autoclip' ? 'Motion · 模板与制作说明' : t('自媒体工作台 · 当前页面'))}</p>{motion && <div ref={mountMotion}/ >}{model && modelOk === false && modelError ? <ModelAlert model={model} error={modelError} /> : null}</>}

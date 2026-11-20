@@ -4,12 +4,23 @@ const fs = require('node:fs');
 const path = require('node:path');
 const root = path.join(__dirname, 'runtime/canvas-web');
 const localAssets = require('./local-assets.cjs');
+const macosNative = process.env.WORKBENCH_BROWSER_AUTH === '1' ? require('./macos-native.cjs') : null;
 const indexFile = process.env.WORKBENCH_ASSET_INDEX || path.join(__dirname, 'data/local-assets.json');
 const imports = new Map();
 process.on('message', message => { if (['local-assets:result', 'unified-ai:result', 'workflow:result'].includes(message?.type)) imports.get(message.id)?.(message); });
 const types = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.webp': 'image/webp', '.jpg': 'image/jpeg', '.woff2': 'font/woff2', '.wasm': 'application/wasm', '.mp4': 'video/mp4' };
 const isApi = url => url.startsWith('/api/') || url.startsWith('/oauth/');
 const server = http.createServer((req, res) => {
+  if (macosNative && req.url.startsWith('/api/workbench/motion-upload?')) {
+    const reply = (status, value) => {
+      res.writeHead(status, { 'content-type': 'application/json', 'cache-control': 'no-store' });
+      res.end(JSON.stringify(value));
+    };
+    if (!process.env.WORKBENCH_NATIVE_KEY || req.headers['x-workbench-native'] !== process.env.WORKBENCH_NATIVE_KEY) return reply(401, {});
+    if (req.method !== 'POST') return reply(405, {});
+    const query = new URL(req.url, 'http://localhost').searchParams;
+    return macosNative.respond(reply, () => macosNative.upload(req, query.get('id') || '', query.get('name') || '', query.get('replace') || ''));
+  }
   if (req.url === '/api/workbench/workflow') {
     const reply = (status, value) => { res.writeHead(status, { 'content-type': 'application/json', 'cache-control': 'no-store' }); res.end(JSON.stringify(value)); };
     if (!process.env.WORKBENCH_NATIVE_KEY || req.headers['x-workbench-native'] !== process.env.WORKBENCH_NATIVE_KEY) { reply(401, { error: '需要工作台授权' }); return; }
@@ -18,6 +29,7 @@ const server = http.createServer((req, res) => {
     req.on('data', chunk => { raw += chunk; if (raw.length > 2000000) req.destroy(); });
     req.on('end', () => {
       let body; try { body = JSON.parse(raw); } catch { reply(400, { error: '参数格式无效' }); return; }
+      if (macosNative) { macosNative.respond(reply, () => macosNative.workflow(body)); return; }
       const id = require('node:crypto').randomUUID();
       const timer = setTimeout(() => { imports.delete(id); reply(504, { error: '办理超时，已保存产物保留，请核对后重试' }); }, 290000);
       imports.set(id, result => { clearTimeout(timer); imports.delete(id); reply(result.ok ? 200 : 400, result.ok ? result : { error: result.error }); });
@@ -34,6 +46,7 @@ const server = http.createServer((req, res) => {
     req.on('end', () => {
       let body;
       try { body = req.method === 'POST' ? JSON.parse(raw) : undefined; } catch { reply(400, { error: '配置格式不正确' }); return; }
+      if (macosNative) { macosNative.respond(reply, () => macosNative.ai(body)); return; }
       const id = require('node:crypto').randomUUID();
       const timer = setTimeout(() => { imports.delete(id); reply(504, { error: '配置同步超时，请重试' }); }, 90000);
       imports.set(id, result => { clearTimeout(timer); imports.delete(id); reply(result.ok ? 200 : 400, result.ok ? result : { error: result.error }); });

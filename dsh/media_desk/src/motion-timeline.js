@@ -1,11 +1,11 @@
 const uid = () => globalThis.crypto.randomUUID()
 export const DEFAULT_TRACKS = [
-  {id:'captions',name:'字幕 / 标题',kind:'text'},
-  {id:'effects',name:'A · 动画 / 动效',kind:'visual'},
-  {id:'overlay',name:'V2 · 叠加画面',kind:'visual'},
-  {id:'video-main',name:'V1 · 主视频',kind:'visual'},
-  {id:'audio-main',name:'A1 · 原声',kind:'audio'},
-  {id:'audio-music',name:'A2 · 配乐 / 配音',kind:'audio'},
+  {id:'captions',name:'字幕',kind:'text'},
+  {id:'effects',name:'模板',kind:'visual'},
+  {id:'overlay',name:'素材',kind:'visual'},
+  {id:'video-main',name:'画面',kind:'visual'},
+  {id:'audio-main',name:'声音',kind:'audio'},
+  {id:'audio-music',name:'配乐',kind:'audio'},
 ]
 export const clipKind = clip => clip.type === 'audio' ? 'audio' : clip.type === 'text' ? 'text' : 'visual'
 export const trackId = clip => clip.trackId || ({text:'captions',animation:'effects',audio:'audio-music'}[clip.type] || 'video-main')
@@ -29,13 +29,24 @@ export function separateAudio(p,ids=p.clips.map(c=>c.id)) {
     if(c.type==='video'&&ids.includes(c.id)&&asset?.hasAudio&&(c.volume??1)>0&&!locked(p,c)){
       const linkId=c.linkId||uid()
       clips.push({...c,volume:0,trackId:trackId(c),linkId})
-      clips.push({id:uid(),type:'audio',title:'原声 · '+(c.title||asset.name),assetId:c.assetId,start:c.start,duration:c.duration,inPoint:c.inPoint||0,volume:c.volume??1,audioFade:c.audioFade||0,trackId:'audio-main',linkId})
+      clips.push({id:uid(),type:'audio',title:'原声 · '+(c.title||asset.name),assetId:c.assetId,start:c.start,duration:c.duration,inPoint:c.inPoint||0,volume:c.volume??1,audioFade:c.audioFade||0,speed:c.speed||1,trackId:'audio-main',linkId})
     }else clips.push({...c,trackId:trackId(c)})
   }
   return {...p,tracks:tracksOf(p),clips}
 }
+const sliceKeyframes=(keyframes,from,to)=>{
+  if(!keyframes)return undefined
+  const out={}
+  for(const [channel,rows] of Object.entries(keyframes)){
+    const kept=(rows||[]).filter(row=>row.t>=from-.001&&row.t<=to+.001).map(row=>({...row,t:Math.round((row.t-from)*1000)/1000}))
+    if(kept.length)out[channel]=kept
+  }
+  return Object.keys(out).length?out:undefined
+}
+const LEGACY_TRACK_NAMES={captions:'字幕 / 标题',effects:'A · 动画 / 动效',overlay:'V2 · 叠加画面','video-main':'V1 · 主视频','audio-main':'A1 · 原声','audio-music':'A2 · 配乐 / 配音'}
+const TRACK_NAMES={captions:'字幕',effects:'模板',overlay:'素材','video-main':'画面','audio-main':'声音','audio-music':'配乐'}
 export function normalizeTimeline(p) {
-  let tracks=tracksOf(p)
+  let tracks=tracksOf(p).map(track=>LEGACY_TRACK_NAMES[track.id]===track.name?{...track,name:TRACK_NAMES[track.id]}:track)
   const video=p.clips.filter(c=>c.type==='video'),animation=p.clips.filter(c=>c.type==='animation')
   if(!p.tracks&&video.length&&animation.length&&Math.max(...animation.map(c=>c.layer||0))<Math.min(...video.map(c=>c.layer||0))){
     tracks=[...tracks];const a=tracks.findIndex(t=>t.id==='effects'),v=tracks.findIndex(t=>t.id==='video-main');[tracks[a],tracks[v]]=[tracks[v],tracks[a]]
@@ -64,16 +75,16 @@ export function trimTimeline(p,id,edge,delta,{linked=true}={}) {
   if(group.some(c=>locked(p,c)))return p
   let shift=Math.round(delta*p.fps)/p.fps
   if(edge==='left'){
-    const minimum=Math.max(...group.map(c=>-Math.min(c.start,['video','audio'].includes(c.type)?c.inPoint||0:c.start)))
+    const minimum=Math.max(...group.map(c=>Math.max(-c.start,['video','audio'].includes(c.type)?-(c.inPoint||0)/(c.speed||1):-c.start)))
     shift=Math.max(minimum,Math.min(Math.min(...group.map(c=>c.duration))-1/p.fps,shift))
   }else{
-    const maximum=Math.min(...group.map(c=>{const a=p.assets.find(a=>a.id===c.assetId);return Math.min(600-c.start-c.duration,['video','audio'].includes(c.type)?a.duration-(c.inPoint||0)-c.duration:600)}))
+    const maximum=Math.min(...group.map(c=>{const a=p.assets.find(a=>a.id===c.assetId);return Math.min(600-c.start-c.duration,['video','audio'].includes(c.type)?(a.duration-(c.inPoint||0))/(c.speed||1)-c.duration:600)}))
     shift=Math.max(1/p.fps-Math.min(...group.map(c=>c.duration)),Math.min(maximum,shift))
   }
   const clips=p.clips.map(c=>{
     if(!ids.has(c.id))return c
-    if(edge==='right')return {...c,duration:c.duration+shift,animationDuration:c.animationDuration||c.duration}
-    return {...c,start:c.start+shift,duration:c.duration-shift,inPoint:Math.max(0,(c.inPoint||0)+shift),animationOffset:Math.max(0,(c.animationOffset||0)+shift),animationDuration:c.animationDuration||c.duration}
+    if(edge==='right')return {...c,duration:c.duration+shift,keyframes:sliceKeyframes(c.keyframes,0,c.duration+shift),animationDuration:c.animationDuration||c.duration}
+    return {...c,start:c.start+shift,duration:c.duration-shift,inPoint:Math.max(0,(c.inPoint||0)+shift*(c.speed||1)),animationOffset:Math.max(0,(c.animationOffset||0)+shift),keyframes:sliceKeyframes(c.keyframes,shift,c.duration),animationDuration:c.animationDuration||c.duration}
   })
   return {...p,clips,duration:Math.max(p.duration,...clips.map(c=>c.start+c.duration))}
 }
@@ -83,7 +94,7 @@ export function splitTimeline(p,ids,time,{linked=true}={}) {
     if(!selected.has(c.id)||locked(p,c)||at<=c.start+.0001||at>=c.start+c.duration-.0001)return [c]
     const offset=at-c.start
     if(c.linkId&&!newLinks.has(c.linkId))newLinks.set(c.linkId,uid())
-    return [{...c,duration:offset,animationDuration:c.animationDuration||c.duration},{...c,id:uid(),start:at,duration:c.duration-offset,inPoint:(c.inPoint||0)+offset,animationOffset:(c.animationOffset||0)+offset,animationDuration:c.animationDuration||c.duration,linkId:c.linkId?newLinks.get(c.linkId):undefined}]
+    return [{...c,duration:offset,keyframes:sliceKeyframes(c.keyframes,0,offset),animationDuration:c.animationDuration||c.duration},{...c,id:uid(),start:at,duration:c.duration-offset,inPoint:(c.inPoint||0)+offset*(c.speed||1),animationOffset:(c.animationOffset||0)+offset,keyframes:sliceKeyframes(c.keyframes,offset,c.duration),animationDuration:c.animationDuration||c.duration,linkId:c.linkId?newLinks.get(c.linkId):undefined}]
   })
   return {...p,clips}
 }
@@ -104,7 +115,7 @@ export function deleteTimeline(p,ids,{linked=true,ripple=false}={}) {
     for(const r of ranges)pieces=pieces.flatMap(s=>s.end<=r.start||s.start>=r.end?[s]:[...(s.start<r.start?[{start:s.start,end:r.start}]:[]),...(s.end>r.end?[{start:r.end,end:s.end}]:[])])
     return pieces.filter(s=>s.end-s.start>=1/p.fps-.001).map((s,i)=>{
       const key=c.linkId+':'+s.start+':'+s.end;if(c.linkId&&!links.has(key))links.set(key,uid())
-      return {...c,id:i?uid():c.id,start:s.start-removedBefore(s.start),duration:s.end-s.start,inPoint:(c.inPoint||0)+s.start-c.start,animationOffset:(c.animationOffset||0)+s.start-c.start,animationDuration:c.animationDuration||c.duration,linkId:c.linkId?links.get(key):undefined}
+      return {...c,id:i?uid():c.id,start:s.start-removedBefore(s.start),duration:s.end-s.start,inPoint:(c.inPoint||0)+(s.start-c.start)*(c.speed||1),animationOffset:(c.animationOffset||0)+s.start-c.start,keyframes:sliceKeyframes(c.keyframes,s.start-c.start,s.end-c.start),animationDuration:c.animationDuration||c.duration,linkId:c.linkId?links.get(key):undefined}
     })
   })
   return {...p,clips,duration:Math.max(1,p.duration-ranges.reduce((n,r)=>n+r.end-r.start,0))}

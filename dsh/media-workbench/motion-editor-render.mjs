@@ -8,7 +8,7 @@ import { once } from 'node:events'
 import { editorDocument, validateEditor } from '../media_desk/src/motion-editor.js'
 import { resolveTimeline } from '../media_desk/src/motion-timeline.js'
 const [dir,data,ffmpegBin]=process.argv.slice(2),require=createRequire(import.meta.url)
-const { chromium }=require(path.join(data,'motion-runtime/zh/node_modules/playwright-core'))
+const { chromium }=require(process.platform === 'darwin' ? path.resolve(import.meta.dirname, '../../upstream/deepseek-harness-master/node_modules/.pnpm/playwright-core@1.61.1/node_modules/playwright-core') : path.join(data,'motion-runtime/zh/node_modules/playwright-core'))
 const p=validateEditor(JSON.parse(await fs.readFile(path.join(dir,'snapshot.json'),'utf8')))
 const id=path.basename(dir),statusFile=path.join(dir,'status.json')
 async function status(value){await fs.writeFile(statusFile+'.tmp',JSON.stringify({id,revision:p.revision,...value}));await fs.rename(statusFile+'.tmp',statusFile)}
@@ -27,14 +27,14 @@ let browser,encoder
 try{
  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve))
  const base='http://127.0.0.1:'+server.address().port,urls=Object.fromEntries(p.assets.map(a=>[a.id,base+'/'+a.id]))
- const executablePath=process.env.CHROME||['C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe','C:/Program Files/Google/Chrome/Application/chrome.exe'].find(existsSync)
+ const executablePath=process.env.CHROME||['/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge','C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe','C:/Program Files/Google/Chrome/Application/chrome.exe'].find(existsSync)
  browser=await chromium.launch({executablePath,headless:true})
  const page=await browser.newPage({viewport:{width:p.width,height:p.height},deviceScaleFactor:1})
  await page.setContent('<body style="margin:0"><iframe name="composition" sandbox="allow-scripts" style="border:0;display:block;width:100vw;height:100vh"></iframe></body>')
  await page.locator('iframe').evaluate((el,html)=>el.srcdoc=html,editorDocument(p,urls,'export'))
  const frame=page.frame({name:'composition'});await frame.waitForFunction(()=>typeof window.renderAt==='function')
  const silent=path.join(dir,'silent.mp4');let stderr=''
- encoder=spawn(path.join(ffmpegBin,'ffmpeg.exe'),['-v','error','-n','-f','image2pipe','-vcodec','mjpeg','-framerate',String(p.fps),'-i','pipe:0','-an','-c:v','libx264','-preset','veryfast','-pix_fmt','yuv420p',silent],{windowsHide:true})
+ encoder=spawn(path.join(ffmpegBin,process.platform==='win32'?'ffmpeg.exe':'ffmpeg'),['-v','error','-n','-f','image2pipe','-vcodec','mjpeg','-framerate',String(p.fps),'-i','pipe:0','-an','-c:v','libx264','-preset','veryfast','-pix_fmt','yuv420p',silent],{windowsHide:true})
  encoder.stderr.on('data',chunk=>{stderr=(stderr+chunk).slice(-2000)})
  encoder.stdin.on('error',()=>{})
  encoder.on('error',()=>{})
@@ -53,13 +53,15 @@ try{
  audio.forEach((clip,index)=>{
   args.push('-i',p.assets.find(a=>a.id===clip.assetId).path)
   const fade=clip.audioFade?Math.min(Number(clip.audioFade),clip.duration/2):0
-  filters.push(`[${index+1}:a]atrim=start=${clip.inPoint||0}:duration=${clip.duration},asetpts=PTS-STARTPTS,volume=${clip.volume??1}${fade?`,afade=t=in:d=${fade},afade=t=out:st=${clip.duration-fade}:d=${fade}`:''},adelay=${Math.round(clip.start*1000)}:all=1[a${index}]`)
+  const speed=Number(clip.speed)||1
+  const tempo=speed===1?'':speed<.5?',atempo=.5,atempo='+(speed/.5):speed>2?',atempo=2,atempo='+(speed/2):',atempo='+speed
+  filters.push(`[${index+1}:a]atrim=start=${clip.inPoint||0}:duration=${clip.duration*speed},asetpts=PTS-STARTPTS${tempo},volume=${clip.volume??1}${fade?`,afade=t=in:d=${fade},afade=t=out:st=${clip.duration-fade}:d=${fade}`:''},adelay=${Math.round(clip.start*1000)}:all=1[a${index}]`)
  })
  if(audio.length){filters.push(audio.map((_,i)=>`[a${i}]`).join('')+`amix=inputs=${audio.length}:normalize=0,apad,atrim=duration=${p.duration}[mix]`);args.push('-filter_complex',filters.join(';'),'-map','0:v:0','-map','[mix]','-c:a','aac')}
  else args.push('-map','0:v:0')
  args.push('-c:v','copy','-t',String(p.duration),'-movflags','+faststart',output)
- await new Promise((resolve,reject)=>execFile(path.join(ffmpegBin,'ffmpeg.exe'),args,{windowsHide:true,timeout:300000},(e,o,s)=>e?reject(Error(s||e.message)):resolve()))
- const probe=await new Promise((resolve,reject)=>execFile(path.join(ffmpegBin,'ffprobe.exe'),['-v','error','-show_format','-show_streams','-of','json',output],{windowsHide:true},(e,o)=>e?reject(e):resolve(JSON.parse(o))))
+ await new Promise((resolve,reject)=>execFile(path.join(ffmpegBin,process.platform==='win32'?'ffmpeg.exe':'ffmpeg'),args,{windowsHide:true,timeout:300000},(e,o,s)=>e?reject(Error(s||e.message)):resolve()))
+ const probe=await new Promise((resolve,reject)=>execFile(path.join(ffmpegBin,process.platform==='win32'?'ffprobe.exe':'ffprobe'),['-v','error','-show_format','-show_streams','-of','json',output],{windowsHide:true},(e,o)=>e?reject(e):resolve(JSON.parse(o))))
  if(!probe.streams.some(s=>s.codec_type==='video')||Math.abs(Number(probe.format.duration)-p.duration)>.2)throw Error('导出校验未通过')
  await status({state:'done',progress:100,duration:Number(probe.format.duration),hasAudio:audio.length>0});await fs.unlink(silent)
 }catch(error){await status({state:'failed',error:error.message});process.exitCode=1}
